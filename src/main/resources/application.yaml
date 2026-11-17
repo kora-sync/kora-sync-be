@@ -13,3 +13,9 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:true}
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:true}

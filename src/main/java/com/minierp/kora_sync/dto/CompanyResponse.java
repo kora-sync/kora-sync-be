@@ -17,7 +17,7 @@ public record CompanyResponse(
         @Schema(description = "Registered legal name", example = "Bom Pão Alimentos LTDA")
         String legalName,
 
-        @Schema(description = "CNPJ or CPF, digits only", example = "11222333000181")
+        @Schema(description = "CPF (11 digits) or CNPJ (14 characters), without punctuation", example = "11222333000181")
         String taxId,
 
         @Schema(description = "Contact e-mail", example = "contato@bompao.example.com")

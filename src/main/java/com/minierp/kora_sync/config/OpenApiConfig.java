@@ -11,6 +11,7 @@ import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import io.swagger.v3.oas.models.media.ArraySchema;
 
 @Configuration
 public class OpenApiConfig {
@@ -50,15 +51,24 @@ public class OpenApiConfig {
                         .example("about:blank"))
                 .addProperty("title", new StringSchema()
                         .description("Short, human-readable summary of the problem")
-                        .example("Bad Request"))
+                        .example("Validation failed"))
                 .addProperty("status", new IntegerSchema()
                         .description("HTTP status code")
                         .example(400))
                 .addProperty("detail", new StringSchema()
                         .description("Explanation specific to this occurrence of the problem")
-                        .example("Validation failed for field 'name'"))
+                        .example("One or more fields are invalid"))
                 .addProperty("instance", new StringSchema()
                         .description("URI of the request that caused the problem")
-                        .example("/api/companies"));
+                        .example("/api/companies"))
+                .addProperty("errors", new ArraySchema()
+                        .description("Field-level validation errors. Present only on validation failures (400)")
+                        .items(new ObjectSchema()
+                                .addProperty("field", new StringSchema()
+                                        .description("Name of the invalid field")
+                                        .example("name"))
+                                .addProperty("message", new StringSchema()
+                                        .description("What is wrong with the field")
+                                        .example("must not be blank"))));
     }
 }

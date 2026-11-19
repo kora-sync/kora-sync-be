@@ -14,6 +14,10 @@ public final class InputNormalizer {
         return emptyToNull(value == null ? null : value.replaceAll("\\D", ""));
     }
 
+    static String code(String value) {
+        return emptyToNull(value == null ? null : value.strip().toUpperCase(Locale.ROOT));
+    }
+
     private static String emptyToNull(String value) {
         return value == null || value.isEmpty() ? null : value;
     }

@@ -16,11 +16,11 @@ import java.math.BigDecimal;
 public record ProductRequest(
 
         @Schema(description = "Internal product code, unique within the company. Letters, digits, dot, hyphen and "
-                + "underscore only; converted to uppercase automatically",
-                example = "PAO-FRANCES", requiredMode = Schema.RequiredMode.REQUIRED)
+                + "underscore only; converted to lowercase automatically",
+                example = "pao-frances", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotBlank
         @Size(max = 50)
-        @Pattern(regexp = "[A-Z0-9._-]+", message = "must contain only letters, digits, '.', '-' or '_'")
+        @Pattern(regexp = "[a-z0-9._-]+", message = "must contain only letters, digits, '.', '-' or '_'")
         String sku,
 
         @Schema(description = "Product name", example = "Pão francês", requiredMode = Schema.RequiredMode.REQUIRED)

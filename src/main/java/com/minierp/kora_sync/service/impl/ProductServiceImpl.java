@@ -111,7 +111,7 @@ public class ProductServiceImpl implements ProductService {
             spec = spec.and((root, query, cb) -> cb.like(cb.lower(root.get("name")), pattern));
         }
         if (filter.sku() != null && !filter.sku().isBlank()) {
-            String pattern = "%" + filter.sku().strip().toUpperCase() + "%";
+            String pattern = "%" + filter.sku().strip().toLowerCase() + "%";
             spec = spec.and((root, query, cb) -> cb.like(root.get("sku"), pattern));
         }
         if (filter.active() != null) {

@@ -15,7 +15,7 @@ public final class InputNormalizer {
     }
 
     static String code(String value) {
-        return emptyToNull(value == null ? null : value.strip().toUpperCase(Locale.ROOT));
+        return emptyToNull(value == null ? null : value.strip().toLowerCase(Locale.ROOT));
     }
 
     private static String emptyToNull(String value) {

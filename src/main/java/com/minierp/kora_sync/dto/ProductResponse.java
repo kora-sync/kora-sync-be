@@ -17,7 +17,7 @@ public record ProductResponse(
                 example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
         UUID companyId,
 
-        @Schema(description = "Internal product code", example = "PAO-FRANCES")
+        @Schema(description = "Internal product code", example = "pao-frances")
         String sku,
 
         @Schema(description = "Product name", example = "Pão francês")

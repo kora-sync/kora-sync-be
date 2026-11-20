@@ -613,3 +613,272 @@ GET {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
 DELETE {{host}}/api/companies/{{companyB}}
 
 > {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+################################################################
+# 7. FINANCIAL ENTRIES
+################################################################
+
+### 7.1 Create a customer for the financial tests (201)
+POST {{host}}/api/companies/{{companyA}}/customers
+Content-Type: application/json
+
+{
+  "name": "Cliente Financeiro",
+  "document": "390.533.447-05",
+  "email": "financeiro@cliente.com",
+  "phone": "11977778888"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("finCustomer", response.body.id);
+%}
+
+### 7.2 Create a supplier for the financial tests (201)
+POST {{host}}/api/companies/{{companyA}}/suppliers
+Content-Type: application/json
+
+{
+  "name": "Fornecedor Financeiro",
+  "document": "11.222.333/0001-81",
+  "email": "financeiro@fornecedor.com",
+  "phone": "11966667777"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("finSupplier", response.body.id);
+%}
+
+### 7.3 Create receivable with customer (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "customerId": "{{finCustomer}}",
+  "description": "Order #1042 - 10 kg of rice",
+  "amount": 150.00,
+  "dueDate": "2030-01-15"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("starts OPEN", function () { client.assert(response.body.status === "OPEN"); });
+    client.test("nothing settled", function () { client.assert(response.body.settledAmount === 0); });
+    client.test("remaining equals amount", function () { client.assert(response.body.remainingAmount === 150, "got " + response.body.remainingAmount); });
+    client.test("not overdue", function () { client.assert(response.body.overdue === false); });
+    client.global.set("entryReceivable", response.body.id);
+%}
+
+### 7.4 Create payable with supplier, due in the past (201, overdue)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "PAYABLE",
+  "supplierId": "{{finSupplier}}",
+  "description": "Flour purchase",
+  "amount": 800.50,
+  "dueDate": "2020-01-10"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("overdue", function () { client.assert(response.body.overdue === true); });
+    client.global.set("entryPayable", response.body.id);
+%}
+
+### 7.5 Create receivable without partner (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "description": "Counter sale",
+  "amount": 42.90,
+  "dueDate": "2030-02-01"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("entryNoPartner", response.body.id);
+%}
+
+### 7.6 Receivable with a supplier (400)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "supplierId": "{{finSupplier}}",
+  "description": "Wrong partner",
+  "amount": 10.00,
+  "dueDate": "2030-03-01"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 7.7 Payable with a customer (400)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "PAYABLE",
+  "customerId": "{{finCustomer}}",
+  "description": "Wrong partner",
+  "amount": 10.00,
+  "dueDate": "2030-03-01"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 7.8 Unknown customer (400)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "customerId": "00000000-0000-0000-0000-000000000000",
+  "description": "Ghost customer",
+  "amount": 10.00,
+  "dueDate": "2030-03-01"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 7.9 Inactive customer (409)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "customerId": "{{customerA}}",
+  "description": "Inactive customer",
+  "amount": 10.00,
+  "dueDate": "2030-03-01"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 7.10 Invalid amount, empty description and missing due date (400)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "description": "",
+  "amount": 0
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 7.11 List all entries (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("3 entries", function () { client.assert(response.body.page.totalElements === 3, "got " + response.body.page.totalElements); });
+    client.test("earliest due date first", function () { client.assert(response.body.data[0].dueDate === "2020-01-10", "got " + response.body.data[0].dueDate); });
+%}
+
+### 7.12 List overdue entries (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries?overdue=true
+
+> {%
+    client.test("1 overdue", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
+    client.test("it is the payable", function () { client.assert(response.body.data[0].entryType === "PAYABLE"); });
+%}
+
+### 7.13 List receivables due in January 2030 (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries?entryType=RECEIVABLE&dueFrom=2030-01-01&dueTo=2030-01-31
+
+> {% client.test("1 entry", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
+
+### 7.14 dueFrom after dueTo (400)
+GET {{host}}/api/companies/{{companyA}}/financial-entries?dueFrom=2030-02-01&dueTo=2030-01-01
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 7.15 Unknown status value (400)
+GET {{host}}/api/companies/{{companyA}}/financial-entries?status=FOO
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 7.16 Get entry (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 7.17 Get entry of A through company B (404, isolation)
+GET {{host}}/api/companies/{{companyB}}/financial-entries/{{entryReceivable}}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 7.18 Update payable amount (200)
+PUT {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}
+Content-Type: application/json
+
+{
+  "entryType": "PAYABLE",
+  "supplierId": "{{finSupplier}}",
+  "description": "Flour purchase - corrected",
+  "amount": 900.00,
+  "dueDate": "2020-01-10"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("amount updated", function () { client.assert(response.body.amount === 900, "got " + response.body.amount); });
+    client.test("remaining updated", function () { client.assert(response.body.remainingAmount === 900, "got " + response.body.remainingAmount); });
+%}
+
+### 7.19 Try to change the entry type (400)
+PUT {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "description": "Flour purchase",
+  "amount": 900.00,
+  "dueDate": "2020-01-10"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 7.20 Cancel entry (204)
+DELETE {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 7.21 Cancel again, no effect (204)
+DELETE {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 7.22 Canceled entry is kept and marked CANCELED (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("CANCELED", function () { client.assert(response.body.status === "CANCELED"); });
+    client.test("canceled is not overdue", function () { client.assert(response.body.overdue === false); });
+%}
+
+### 7.23 Update a canceled entry (409)
+PUT {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "description": "Counter sale",
+  "amount": 10.00,
+  "dueDate": "2030-02-01"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 7.24 List canceled entries (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries?status=CANCELED
+
+> {% client.test("1 canceled", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}

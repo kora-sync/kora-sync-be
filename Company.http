@@ -1,0 +1,615 @@
+@host = http://localhost:8080
+
+################################################################
+# 1. COMPANIES
+################################################################
+
+### 1.1 Create company A (201)
+POST {{host}}/api/companies
+Content-Type: application/json
+
+{
+  "name": "Padaria Kora",
+  "legalName": "Padaria Kora LTDA",
+  "taxId": "11.222.333/0001-81",
+  "email": "contato@padariakora.com.br",
+  "phone": "(11) 98765-4321"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("taxId normalized to digits", function () { client.assert(response.body.taxId === "11222333000181"); });
+    client.global.set("companyA", response.body.id);
+%}
+
+### 1.2 Create company B (201)
+POST {{host}}/api/companies
+Content-Type: application/json
+
+{
+  "name": "Mercado Sync",
+  "legalName": "Mercado Sync LTDA",
+  "taxId": "11.444.777/0001-61",
+  "email": "contato@mercadosync.com.br",
+  "phone": "(21) 91234-5678"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("companyB", response.body.id);
+%}
+
+### 1.3 Duplicate tax id (409)
+POST {{host}}/api/companies
+Content-Type: application/json
+
+{
+  "name": "Outra Padaria",
+  "legalName": "Outra Padaria LTDA",
+  "taxId": "11222333000181",
+  "email": "outra@padaria.com.br",
+  "phone": "11911112222"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 1.4 Invalid tax id (400)
+POST {{host}}/api/companies
+Content-Type: application/json
+
+{
+  "name": "Empresa Invalida",
+  "legalName": "Empresa Invalida LTDA",
+  "taxId": "11222333000199",
+  "email": "x@y.com",
+  "phone": "11911112222"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 1.5 List companies (200)
+GET {{host}}/api/companies?page=0&size=10
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("2 companies", function () { client.assert(response.body.page.totalElements === 2, "got " + response.body.page.totalElements); });
+%}
+
+### 1.6 Get company A (200)
+GET {{host}}/api/companies/{{companyA}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 1.7 Update company A (200)
+PUT {{host}}/api/companies/{{companyA}}
+Content-Type: application/json
+
+{
+  "name": "Padaria Kora Centro",
+  "legalName": "Padaria Kora LTDA",
+  "taxId": "11222333000181",
+  "email": "contato@padariakora.com.br",
+  "phone": "11987654321"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("name updated", function () { client.assert(response.body.name === "Padaria Kora Centro"); });
+%}
+
+### 1.8 Get unknown company (404)
+GET {{host}}/api/companies/00000000-0000-0000-0000-000000000000
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+
+################################################################
+# 2. CUSTOMERS
+################################################################
+
+### 2.1 Create customer in A (201)
+POST {{host}}/api/companies/{{companyA}}/customers
+Content-Type: application/json
+
+{
+  "name": "Maria Souza",
+  "document": "529.982.247-25",
+  "email": "maria@email.com",
+  "phone": "(11) 99999-0000"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("document normalized", function () { client.assert(response.body.document === "52998224725"); });
+    client.global.set("customerA", response.body.id);
+%}
+
+### 2.2 Duplicate document in A (409)
+POST {{host}}/api/companies/{{companyA}}/customers
+Content-Type: application/json
+
+{
+  "name": "Maria Duplicada",
+  "document": "52998224725",
+  "email": "dup@email.com",
+  "phone": "11999990001"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 2.3 Same document in company B (201)
+POST {{host}}/api/companies/{{companyB}}/customers
+Content-Type: application/json
+
+{
+  "name": "Maria Souza",
+  "document": "52998224725",
+  "email": "maria@email.com",
+  "phone": "11999990000"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 2.4 Invalid document (400)
+POST {{host}}/api/companies/{{companyA}}/customers
+Content-Type: application/json
+
+{
+  "name": "Documento Ruim",
+  "document": "12345678900",
+  "email": "ruim@email.com",
+  "phone": "11999990002"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 2.5 List customers with filters (200)
+GET {{host}}/api/companies/{{companyA}}/customers?name=maria&active=true
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("1 customer", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
+%}
+
+### 2.6 Get customer (200)
+GET {{host}}/api/companies/{{companyA}}/customers/{{customerA}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 2.7 Get customer of A through company B (404, isolation)
+GET {{host}}/api/companies/{{companyB}}/customers/{{customerA}}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 2.8 Update customer (200)
+PUT {{host}}/api/companies/{{companyA}}/customers/{{customerA}}
+Content-Type: application/json
+
+{
+  "name": "Maria S. Souza",
+  "document": "52998224725",
+  "email": "maria.souza@email.com",
+  "phone": "11999990000"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("name updated", function () { client.assert(response.body.name === "Maria S. Souza"); });
+%}
+
+### 2.9 Deactivate customer (204)
+DELETE {{host}}/api/companies/{{companyA}}/customers/{{customerA}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 2.10 List inactive customers (200)
+GET {{host}}/api/companies/{{companyA}}/customers?active=false
+
+> {%
+    client.test("1 inactive customer", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
+%}
+
+
+################################################################
+# 3. SUPPLIERS
+################################################################
+
+### 3.1 Create supplier with CNPJ in A (201)
+POST {{host}}/api/companies/{{companyA}}/suppliers
+Content-Type: application/json
+
+{
+  "name": "Moinho Boa Safra",
+  "document": "40.688.134/0001-61",
+  "email": "vendas@boasafra.com.br",
+  "phone": "(19) 3333-4444"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("supplierA", response.body.id);
+%}
+
+### 3.2 Create supplier with alphanumeric CNPJ (201)
+POST {{host}}/api/companies/{{companyA}}/suppliers
+Content-Type: application/json
+
+{
+  "name": "Distribuidora Alfa",
+  "document": "12.ABC.345/01DE-35",
+  "email": "vendas@alfa.com.br",
+  "phone": "11955556666"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("alphanumeric document kept", function () { client.assert(response.body.document === "12ABC34501DE35", "got " + response.body.document); });
+%}
+
+### 3.3 Duplicate document (409)
+POST {{host}}/api/companies/{{companyA}}/suppliers
+Content-Type: application/json
+
+{
+  "name": "Moinho Duplicado",
+  "document": "40688134000161",
+  "email": "dup@boasafra.com.br",
+  "phone": "19911112222"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 3.4 List suppliers (200)
+GET {{host}}/api/companies/{{companyA}}/suppliers?name=moinho
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("1 supplier", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
+%}
+
+### 3.5 Get supplier of A through company B (404, isolation)
+GET {{host}}/api/companies/{{companyB}}/suppliers/{{supplierA}}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 3.6 Update supplier (200)
+PUT {{host}}/api/companies/{{companyA}}/suppliers/{{supplierA}}
+Content-Type: application/json
+
+{
+  "name": "Moinho Boa Safra Ltda",
+  "document": "40688134000161",
+  "email": "vendas@boasafra.com.br",
+  "phone": "1933334444"
+}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 3.7 Deactivate supplier (204)
+DELETE {{host}}/api/companies/{{companyA}}/suppliers/{{supplierA}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+
+################################################################
+# 4. PRODUCTS
+################################################################
+
+### 4.1 Create rice, KG with minimum stock (201)
+POST {{host}}/api/companies/{{companyA}}/products
+Content-Type: application/json
+
+{
+  "sku": "Arroz",
+  "name": "Arroz",
+  "description": "Arroz branco tipo 1",
+  "unit": "KG",
+  "costPrice": 4.50,
+  "salePrice": 6.90,
+  "minimumStock": 5
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("sku lowercase", function () { client.assert(response.body.sku === "arroz", "got " + response.body.sku); });
+    client.test("stock starts at zero", function () { client.assert(response.body.stockQuantity === 0); });
+    client.test("lowStock true", function () { client.assert(response.body.lowStock === true); });
+    client.global.set("productRice", response.body.id);
+%}
+
+### 4.2 Create pen, UN without minimum (201)
+POST {{host}}/api/companies/{{companyA}}/products
+Content-Type: application/json
+
+{
+  "sku": "caneta",
+  "name": "Caneta azul",
+  "unit": "UN",
+  "salePrice": 2.50
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("lowStock false", function () { client.assert(response.body.lowStock === false); });
+    client.global.set("productPen", response.body.id);
+%}
+
+### 4.3 Duplicate SKU, different case (409)
+POST {{host}}/api/companies/{{companyA}}/products
+Content-Type: application/json
+
+{
+  "sku": "ARROZ",
+  "name": "Arroz Duplicado",
+  "unit": "KG",
+  "salePrice": 7.00
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 4.4 Same SKU in company B (201)
+POST {{host}}/api/companies/{{companyB}}/products
+Content-Type: application/json
+
+{
+  "sku": "arroz",
+  "name": "Arroz",
+  "unit": "KG",
+  "salePrice": 7.20
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("productRiceB", response.body.id);
+%}
+
+### 4.5 Several validation errors (400)
+POST {{host}}/api/companies/{{companyA}}/products
+Content-Type: application/json
+
+{
+  "sku": "X Y",
+  "name": "",
+  "unit": "KG",
+  "salePrice": 18.999
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 4.6 Unknown unit (400)
+POST {{host}}/api/companies/{{companyA}}/products
+Content-Type: application/json
+
+{
+  "sku": "abc",
+  "name": "Teste",
+  "unit": "LITRO",
+  "salePrice": 5
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 4.7 List with low stock filter (200)
+GET {{host}}/api/companies/{{companyA}}/products?lowStock=true
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("only rice is low", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
+%}
+
+### 4.8 List filtering by SKU, uppercase input (200)
+GET {{host}}/api/companies/{{companyA}}/products?sku=ARR&active=true
+
+> {% client.test("1 product", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
+
+### 4.9 List with invalid sort (400)
+GET {{host}}/api/companies/{{companyA}}/products?sort=foo
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 4.10 Get product (200)
+GET {{host}}/api/companies/{{companyA}}/products/{{productRice}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 4.11 Get product of A through company B (404, isolation)
+GET {{host}}/api/companies/{{companyB}}/products/{{productRice}}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+
+################################################################
+# 5. STOCK MOVEMENTS (rice, KG)
+################################################################
+
+### 5.1 Entry of 20 (201)
+POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "ENTRY",
+  "quantity": 20,
+  "reason": "Initial purchase"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("quantity +20", function () { client.assert(response.body.quantity === 20); });
+    client.test("balance 20", function () { client.assert(response.body.balanceAfter === 20); });
+%}
+
+### 5.2 Fractional exit of 17.5 (201)
+POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "EXIT",
+  "quantity": 17.5,
+  "reason": "Sale"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("quantity -17.5", function () { client.assert(response.body.quantity === -17.5, "got " + response.body.quantity); });
+    client.test("balance 2.5", function () { client.assert(response.body.balanceAfter === 2.5, "got " + response.body.balanceAfter); });
+%}
+
+### 5.3 Exit larger than balance (409)
+POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "EXIT",
+  "quantity": 3
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 5.4 Adjustment without reason (400)
+POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "ADJUSTMENT",
+  "quantity": 4
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 5.5 Adjustment to a counted balance of 4 (201)
+POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "ADJUSTMENT",
+  "quantity": 4,
+  "reason": "Inventory count"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("delta +1.5", function () { client.assert(response.body.quantity === 1.5, "got " + response.body.quantity); });
+    client.test("balance 4", function () { client.assert(response.body.balanceAfter === 4, "got " + response.body.balanceAfter); });
+%}
+
+### 5.6 Entry with zero quantity (400)
+POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "ENTRY",
+  "quantity": 0
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 5.7 Fraction on a UN product (400)
+POST {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "ENTRY",
+  "quantity": 1.5
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 5.8 Whole entry on a UN product (201)
+POST {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "ENTRY",
+  "quantity": 100,
+  "reason": "Box opened"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 5.9 History of rice, newest first (200)
+GET {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("3 movements", function () { client.assert(response.body.page.totalElements === 3, "got " + response.body.page.totalElements); });
+    client.test("newest first is the adjustment", function () { client.assert(response.body.data[0].movementType === "ADJUSTMENT"); });
+%}
+
+### 5.10 History filtered by EXIT (200)
+GET {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements?movementType=EXIT
+
+> {% client.test("1 exit", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
+
+### 5.11 History with invalid sort (400)
+GET {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements?sort=foo
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 5.12 Register through the wrong company (404, isolation)
+POST {{host}}/api/companies/{{companyB}}/products/{{productRice}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "ENTRY",
+  "quantity": 1
+}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 5.13 History through the wrong company (404, isolation)
+GET {{host}}/api/companies/{{companyB}}/products/{{productRice}}/stock-movements
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 5.14 Update product keeps the stock balance (200)
+PUT {{host}}/api/companies/{{companyA}}/products/{{productRice}}
+Content-Type: application/json
+
+{
+  "sku": "arroz",
+  "name": "Arroz tipo 1",
+  "unit": "KG",
+  "costPrice": 5.00,
+  "salePrice": 7.50,
+  "minimumStock": 8
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("stock unchanged at 4", function () { client.assert(response.body.stockQuantity === 4, "got " + response.body.stockQuantity); });
+    client.test("lowStock now true", function () { client.assert(response.body.lowStock === true); });
+%}
+
+### 5.15 Deactivate pen (204)
+DELETE {{host}}/api/companies/{{companyA}}/products/{{productPen}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 5.16 Movement on an inactive product (409)
+POST {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
+Content-Type: application/json
+
+{
+  "movementType": "ENTRY",
+  "quantity": 1
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 5.17 History of an inactive product is still readable (200)
+GET {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("1 movement kept", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
+%}
+
+
+################################################################
+# 6. DEACTIVATE COMPANY
+################################################################
+
+### 6.1 Deactivate company B (204)
+DELETE {{host}}/api/companies/{{companyB}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}

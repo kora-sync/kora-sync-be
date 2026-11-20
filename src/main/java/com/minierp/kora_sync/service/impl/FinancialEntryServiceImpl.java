@@ -89,7 +89,7 @@ public class FinancialEntryServiceImpl implements FinancialEntryService {
         FinancialEntry entry = findOrThrow(companyId, id);
 
         if (!entry.getStatus().isEditable()) {
-            throw new BusinessConflictException("Only OPEN entrie can be edied; this one is " + entry.getStatus());
+            throw new BusinessConflictException("Only OPEN entries can be edited; this one is " + entry.getStatus());
         }
 
         if (request.entryType() != entry.getEntryType()) {
@@ -112,7 +112,11 @@ public class FinancialEntryServiceImpl implements FinancialEntryService {
     public void cancel(UUID companyId, UUID id) {
         FinancialEntry entry = findOrThrow(companyId, id);
 
-        if (entry.getStatus().isCancelable()) {
+        if (entry.getStatus() == EntryStatus.CANCELED) {
+            return;
+        }
+
+        if (!entry.getStatus().isCancelable()) {
             throw new BusinessConflictException("Only OPEN entries can be canceled; this one is " + entry.getStatus());
         }
 
@@ -133,6 +137,11 @@ public class FinancialEntryServiceImpl implements FinancialEntryService {
 
     private FinancialEntry findOrThrow(UUID companyId, UUID id) {
         return financialEntryRepository.findByIdAndCompanyId(id, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Financial entry", id));
+    }
+
+    private FinancialEntry findForUpdateOrThrow(UUID companyId, UUID id) {
+        return financialEntryRepository.findByIdAndCompanyIdForUpdate(id, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Financial entry", id));
     }
 

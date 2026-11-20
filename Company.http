@@ -1,5 +1,16 @@
 @host = http://localhost:8080
 
+### 0.1 Database must be empty before a full run (200)
+GET {{host}}/api/companies?page=0&size=1
+
+> {%
+    client.global.clearAll();
+    client.test("Database is clean (run: TRUNCATE companies CASCADE;)", function () {
+        client.assert(response.body.page.totalElements === 0,
+            "Database is not empty. Run: TRUNCATE companies CASCADE;");
+    });
+%}
+
 ################################################################
 # 1. COMPANIES
 ################################################################
@@ -882,3 +893,182 @@ Content-Type: application/json
 GET {{host}}/api/companies/{{companyA}}/financial-entries?status=CANCELED
 
 > {% client.test("1 canceled", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
+
+################################################################
+# 8. SETTLEMENTS
+################################################################
+
+### 8.1 Partial settlement of 50 on the receivable, PIX (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 50.00,
+  "paymentMethod": "PIX",
+  "notes": "  First installment  "
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("amount 50", function () { client.assert(response.body.amount === 50); });
+    client.test("settledOn defaulted to today", function () { client.assert(response.body.settledOn != null); });
+    client.test("notes stripped", function () { client.assert(response.body.notes === "First installment", "got " + response.body.notes); });
+%}
+
+### 8.2 Entry is now PARTIALLY_SETTLED (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+
+> {%
+    client.test("PARTIALLY_SETTLED", function () { client.assert(response.body.status === "PARTIALLY_SETTLED", "got " + response.body.status); });
+    client.test("settled 50", function () { client.assert(response.body.settledAmount === 50); });
+    client.test("remaining 100", function () { client.assert(response.body.remainingAmount === 100, "got " + response.body.remainingAmount); });
+%}
+
+### 8.3 Edit a partially settled entry (409)
+PUT {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "customerId": "{{finCustomer}}",
+  "description": "Order #1042 - 10 kg of rice",
+  "amount": 150.00,
+  "dueDate": "2030-01-15"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 8.4 Cancel a partially settled entry (409)
+DELETE {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 8.5 Settle more than the remaining balance (409)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 100.01,
+  "paymentMethod": "CASH"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 8.6 Settle the remaining 100 with a past date, CASH (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 100.00,
+  "settledOn": "2026-01-10",
+  "paymentMethod": "CASH"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("past date kept", function () { client.assert(response.body.settledOn === "2026-01-10", "got " + response.body.settledOn); });
+%}
+
+### 8.7 Entry is now SETTLED (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+
+> {%
+    client.test("SETTLED", function () { client.assert(response.body.status === "SETTLED", "got " + response.body.status); });
+    client.test("remaining 0", function () { client.assert(response.body.remainingAmount === 0, "got " + response.body.remainingAmount); });
+    client.test("settled entry is not overdue", function () { client.assert(response.body.overdue === false); });
+%}
+
+### 8.8 Settle an already settled entry (409)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 1.00,
+  "paymentMethod": "PIX"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 8.9 Settle a canceled entry (409)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 1.00,
+  "paymentMethod": "PIX"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 8.10 Future settlement date (400)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 10.00,
+  "settledOn": "2099-01-01",
+  "paymentMethod": "PIX"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 8.11 Zero amount and missing payment method (400)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 0
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 8.12 Partial settlement of 300 on the overdue payable (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 300.00,
+  "paymentMethod": "BANK_TRANSFER",
+  "notes": "Paid by bank transfer"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 8.13 Partially settled payable is still overdue (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}
+
+> {%
+    client.test("PARTIALLY_SETTLED", function () { client.assert(response.body.status === "PARTIALLY_SETTLED"); });
+    client.test("remaining 600", function () { client.assert(response.body.remainingAmount === 600, "got " + response.body.remainingAmount); });
+    client.test("still overdue", function () { client.assert(response.body.overdue === true); });
+%}
+
+### 8.14 History of the receivable, newest settlement date first (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("2 settlements", function () { client.assert(response.body.page.totalElements === 2, "got " + response.body.page.totalElements); });
+    client.test("most recent date first (PIX)", function () { client.assert(response.body.data[0].paymentMethod === "PIX", "got " + response.body.data[0].paymentMethod); });
+%}
+
+### 8.15 History filtered by CASH (200)
+GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements?paymentMethod=CASH
+
+> {% client.test("1 cash settlement", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
+
+### 8.16 Settle through the wrong company (404, isolation)
+POST {{host}}/api/companies/{{companyB}}/financial-entries/{{entryPayable}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 10.00,
+  "paymentMethod": "PIX"
+}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 8.17 History through the wrong company (404, isolation)
+GET {{host}}/api/companies/{{companyB}}/financial-entries/{{entryPayable}}/settlements
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}

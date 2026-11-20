@@ -71,7 +71,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponse update(UUID companyId, UUID id, ProductRequest request) {
-       Product product = findOrThrow(companyId, id);
+       Product product = findForUpdateOrThrow(companyId, id);
 
        if (productRepository.existsByCompanyIdAndSkuAndIdNot(companyId, request.sku(), id)) {
            throw new BusinessConflictException("SKU already registered for this company: " + request.sku());
@@ -87,8 +87,9 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public void deactivate(UUID companyId, UUID id) {
-        Product product = findOrThrow(companyId, id);
+        Product product = findForUpdateOrThrow(companyId, id);
         product.setActive(false);
         log.info("Product deactivated: id={} companyId={}", id, companyId);
     }
@@ -101,6 +102,11 @@ public class ProductServiceImpl implements ProductService {
 
     private Product findOrThrow(UUID companyId, UUID id) {
         return productRepository.findByIdAndCompanyId(id, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product", id));
+    }
+
+    private Product findForUpdateOrThrow(UUID companyId, UUID id) {
+        return productRepository.findByIdAndCompanyIdForUpdate(id, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product", id));
     }
 

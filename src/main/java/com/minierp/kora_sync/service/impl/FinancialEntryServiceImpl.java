@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -201,13 +200,14 @@ public class FinancialEntryServiceImpl implements FinancialEntryService {
             spec = spec.and((root, query, cb) ->
                     cb.lessThanOrEqualTo(root.<LocalDate>get("dueDate"), filter.dueTo()));
         }
-        if (Boolean.TRUE.equals(filter.overdue())) {
-            List<EntryStatus> settleable = Arrays.stream(EntryStatus.values())
-                    .filter(EntryStatus::isSettleable)
-                    .toList();
-            spec = spec.and((root, query, cb) -> cb.and(
-                    root.get("status").in(settleable),
-                    cb.lessThan(root.<LocalDate>get("dueDate"), today)));
+        if (filter.overdue() != null) {
+            List<EntryStatus> settleable = EntryStatus.settleableStatuses();
+            spec = spec.and((root, query, cb) -> {
+                var overdue = cb.and(
+                        root.get("status").in(settleable),
+                        cb.lessThan(root.<LocalDate>get("dueDate"), today));
+                return filter.overdue() ? overdue : cb.not(overdue);
+            });
         }
         return spec;
     }

@@ -1072,3 +1072,269 @@ Content-Type: application/json
 GET {{host}}/api/companies/{{companyB}}/financial-entries/{{entryPayable}}/settlements
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+# ---------------------------------------------------------------
+# 9. CASH FLOW
+# ---------------------------------------------------------------
+
+### 9.1 R1: receivable 500, due 2031-03-02 (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "description": "Cash flow R1",
+  "amount": 500.00,
+  "dueDate": "2031-03-02"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("cfR1", response.body.id);
+%}
+
+### 9.2 R2: receivable 300, due 2031-03-04 (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "description": "Cash flow R2",
+  "amount": 300.00,
+  "dueDate": "2031-03-04"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("cfR2", response.body.id);
+%}
+
+### 9.3 R3: receivable 80, due 2031-03-02, never settled (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "description": "Cash flow R3",
+  "amount": 80.00,
+  "dueDate": "2031-03-02"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 9.4 P1: payable 400, due 2031-03-02 (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "PAYABLE",
+  "description": "Cash flow P1",
+  "amount": 400.00,
+  "dueDate": "2031-03-02"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("cfP1", response.body.id);
+%}
+
+### 9.5 P2: payable 120, due 2031-03-05, never settled (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "PAYABLE",
+  "description": "Cash flow P2",
+  "amount": 120.00,
+  "dueDate": "2031-03-05"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 9.6 C1: payable 999, due 2031-03-03, to be canceled (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries
+Content-Type: application/json
+
+{
+  "entryType": "PAYABLE",
+  "description": "Cash flow C1",
+  "amount": 999.00,
+  "dueDate": "2031-03-03"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("cfC1", response.body.id);
+%}
+
+### 9.7 Cancel C1 (204)
+DELETE {{host}}/api/companies/{{companyA}}/financial-entries/{{cfC1}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 9.8 R1: 200 received by PIX on 2025-03-02 (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{cfR1}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 200.00,
+  "settledOn": "2025-03-02",
+  "paymentMethod": "PIX"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 9.9 R1: 100 received in CASH on 2025-03-02 (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{cfR1}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 100.00,
+  "settledOn": "2025-03-02",
+  "paymentMethod": "CASH"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 9.10 R2: 300 received by PIX on 2025-03-04, fully settled (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{cfR2}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 300.00,
+  "settledOn": "2025-03-04",
+  "paymentMethod": "PIX"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 9.11 P1: 150 paid by bank transfer on 2025-03-03 (201)
+POST {{host}}/api/companies/{{companyA}}/financial-entries/{{cfP1}}/settlements
+Content-Type: application/json
+
+{
+  "amount": 150.00,
+  "settledOn": "2025-03-03",
+  "paymentMethod": "BANK_TRANSFER"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 9.12 Realized cash flow, 2025-03-01 to 2025-03-05 (200)
+GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-03-01&to=2025-03-05
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("5 days, starting at from", function () {
+        client.assert(response.body.days.length === 5, "got " + response.body.days.length);
+        client.assert(response.body.days[0].date === "2025-03-01");
+    });
+    client.test("totals: in 600, out 150, net 450", function () {
+        client.assert(response.body.totalInflow === 600, "inflow " + response.body.totalInflow);
+        client.assert(response.body.totalOutflow === 150, "outflow " + response.body.totalOutflow);
+        client.assert(response.body.net === 450, "net " + response.body.net);
+    });
+    client.test("day without movement is zero", function () {
+        client.assert(response.body.days[0].inflow === 0 && response.body.days[0].cumulativeNet === 0);
+    });
+    client.test("03-02: in 300, cumulative 300", function () {
+        client.assert(response.body.days[1].inflow === 300 && response.body.days[1].cumulativeNet === 300);
+    });
+    client.test("03-03: out 150, net -150, cumulative 150", function () {
+        client.assert(response.body.days[2].outflow === 150);
+        client.assert(response.body.days[2].net === -150);
+        client.assert(response.body.days[2].cumulativeNet === 150);
+    });
+    client.test("03-04: in 300, cumulative 450", function () {
+        client.assert(response.body.days[3].inflow === 300 && response.body.days[3].cumulativeNet === 450);
+    });
+    client.test("03-05: cumulative stays 450", function () { client.assert(response.body.days[4].cumulativeNet === 450); });
+    client.test("by payment method: CASH, PIX, BANK_TRANSFER", function () {
+        var m = response.body.byPaymentMethod;
+        client.assert(m.length === 3, "got " + m.length);
+        client.assert(m[0].paymentMethod === "CASH" && m[0].inflow === 100 && m[0].outflow === 0);
+        client.assert(m[1].paymentMethod === "PIX" && m[1].inflow === 500);
+        client.assert(m[2].paymentMethod === "BANK_TRANSFER" && m[2].outflow === 150 && m[2].inflow === 0);
+    });
+%}
+
+### 9.13 Forecast cash flow, 2031-03-01 to 2031-03-07 (200)
+GET {{host}}/api/companies/{{companyA}}/cash-flow/forecast?from=2031-03-01&to=2031-03-07
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("7 days", function () { client.assert(response.body.days.length === 7, "got " + response.body.days.length); });
+    client.test("totals: in 280, out 370, net -90", function () {
+        client.assert(response.body.totalInflow === 280, "inflow " + response.body.totalInflow);
+        client.assert(response.body.totalOutflow === 370, "outflow " + response.body.totalOutflow);
+        client.assert(response.body.net === -90, "net " + response.body.net);
+    });
+    client.test("03-02: R1 remaining 200 + R3 80 in, P1 remaining 250 out", function () {
+        client.assert(response.body.days[1].inflow === 280, "inflow " + response.body.days[1].inflow);
+        client.assert(response.body.days[1].outflow === 250, "outflow " + response.body.days[1].outflow);
+        client.assert(response.body.days[1].cumulativeNet === 30);
+    });
+    client.test("03-03: canceled entry is ignored", function () { client.assert(response.body.days[2].outflow === 0); });
+    client.test("03-04: settled entry is ignored", function () { client.assert(response.body.days[3].inflow === 0); });
+    client.test("03-05: P2 120 out, cumulative -90", function () {
+        client.assert(response.body.days[4].outflow === 120);
+        client.assert(response.body.days[4].cumulativeNet === -90);
+    });
+%}
+
+### 9.14 Single-day period (200)
+GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-03-02&to=2025-03-02
+
+> {%
+    client.test("1 day", function () { client.assert(response.body.days.length === 1, "got " + response.body.days.length); });
+    client.test("inflow 300", function () { client.assert(response.body.totalInflow === 300); });
+%}
+
+### 9.15 Longest allowed period, 366 days (200)
+GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-01-01&to=2026-01-01
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("366 days", function () { client.assert(response.body.days.length === 366, "got " + response.body.days.length); });
+%}
+
+### 9.16 Period of 367 days (400)
+GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-01-01&to=2026-01-02
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 9.17 'from' after 'to' (400)
+GET {{host}}/api/companies/{{companyA}}/cash-flow/forecast?from=2031-03-07&to=2031-03-01
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 9.18 Missing 'to' (400)
+GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-03-01
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 9.19 Malformed date (400)
+GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=01/03/2025&to=2025-03-05
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 9.20 Another company sees none of this data (200, isolation)
+GET {{host}}/api/companies/{{companyB}}/cash-flow/realized?from=2025-03-01&to=2025-03-05
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("all zero", function () {
+        client.assert(response.body.totalInflow === 0 && response.body.totalOutflow === 0);
+        client.assert(response.body.byPaymentMethod.length === 0);
+    });
+%}
+
+### 9.21 Another company sees none of the forecast (200, isolation)
+GET {{host}}/api/companies/{{companyB}}/cash-flow/forecast?from=2031-03-01&to=2031-03-07
+
+> {% client.test("all zero", function () { client.assert(response.body.totalInflow === 0 && response.body.totalOutflow === 0); }); %}
+
+### 9.22 Unknown company (404)
+GET {{host}}/api/companies/00000000-0000-0000-0000-000000000000/cash-flow/realized?from=2025-03-01&to=2025-03-05
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}

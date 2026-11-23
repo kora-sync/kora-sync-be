@@ -2,6 +2,9 @@ package com.minierp.kora_sync.enums;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.util.Arrays;
+import java.util.List;
+
 @Schema(description = """
         Lifecycle of a financial entry. \
         OPEN: nothing settled yet; can be edited or canceled. \
@@ -35,5 +38,9 @@ public enum EntryStatus {
 
     public boolean isCancelable() {
         return cancelable;
+    }
+
+    public static List<EntryStatus> settleableStatuses() {
+        return Arrays.stream(values()).filter(EntryStatus::isSettleable).toList();
     }
 }

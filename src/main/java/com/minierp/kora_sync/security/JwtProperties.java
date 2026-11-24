@@ -10,7 +10,8 @@ import java.time.Duration;
 public record JwtProperties(
         String secret,
         @DefaultValue("kora-sync") String issuer,
-        @DefaultValue("15m") Duration accessTokenTtl) {
+        @DefaultValue("15m") Duration accessTokenTtl,
+        @DefaultValue("7d") Duration refreshTokenTtl) {
 
     private static final int MIN_SECRET_BYTES = 32;
 

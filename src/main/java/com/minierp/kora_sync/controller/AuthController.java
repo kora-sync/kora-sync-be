@@ -1,10 +1,7 @@
 package com.minierp.kora_sync.controller;
 
-import com.minierp.kora_sync.dto.AuthResponse;
-import com.minierp.kora_sync.dto.LoginRequest;
-import com.minierp.kora_sync.dto.RegisterRequest;
-import com.minierp.kora_sync.dto.UserResponse;
-import com.minierp.kora_sync.security.AuthService;
+import com.minierp.kora_sync.dto.*;
+import com.minierp.kora_sync.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -26,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-@Tag(name = "Authentication", description = "Register a company, sign in and see who is signed in")
+@Tag(name = "Authentication", description = "\"Register a company, sign in, renew the session, sign out and see who is signed in\"")
 public class AuthController {
 
     private final AuthService authService;
@@ -61,6 +58,36 @@ public class AuthController {
     })
     public AuthResponse signin(@Valid @RequestBody LoginRequest request) {
         return authService.signin(request);
+    }
+
+    @PostMapping("/refresh")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+            summary = "Renew the access token",
+            description = "Exchanges a valid refresh token for a new access token and a new refresh token. "
+                    + "Public endpoint. The refresh token is single use: the one sent is invalidated. "
+                    + "Sending a token that was already used revokes the whole session as a precaution.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "New access and refresh tokens"),
+            @ApiResponse(responseCode = "401", description = "Refresh token invalid, expired, revoked or already used",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    public AuthResponse refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return authService.refresh(request);
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Sign out",
+            description = "Revokes the session of the given refresh token, so it can no longer be renewed. "
+                    + "Public endpoint and idempotent: it answers 204 even if the token is unknown. "
+                    + "An access token already issued stays valid until it expires.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Signed out")
+    })
+    public void logout(@Valid @RequestBody RefreshTokenRequest request) {
+        authService.logout(request);
     }
 
     @GetMapping("/me")

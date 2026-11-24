@@ -1569,3 +1569,169 @@ Content-Type: application/json
 }
 
 > {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+# ---------------------------------------------------------------
+# 11. REFRESH TOKEN AND LOGOUT
+# ---------------------------------------------------------------
+
+### 11.1 Login returns a refresh token (200)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@authtest.com",
+  "password": "Sup3r-secret"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("refresh token returned", function () {
+        client.assert(response.body.refreshToken && response.body.refreshToken.length >= 40);
+        client.assert(response.body.refreshExpiresIn === 604800, "got " + response.body.refreshExpiresIn);
+    });
+    client.global.set("refreshToken1", response.body.refreshToken);
+    client.global.set("accessToken1", response.body.accessToken);
+%}
+
+### 11.2 Refresh with token 1 (200, rotated)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken1}}"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("new refresh token is different", function () {
+        client.assert(response.body.refreshToken !== client.global.get("refreshToken1"));
+        client.assert(response.body.accessToken && response.body.accessToken.length > 20);
+    });
+    client.global.set("refreshToken2", response.body.refreshToken);
+    client.global.set("authToken", response.body.accessToken);
+%}
+
+### 11.3 The new access token works (200)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{authToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 11.4 Reuse of token 1, already used (401, family revoked)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken1}}"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 11.5 Token 2 died with its family (401)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken2}}"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 11.6 Garbage token (401)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "this-token-does-not-exist"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 11.7 Blank refresh token (400)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": ""
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 11.8 New login, then refresh (200)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@authtest.com",
+  "password": "Sup3r-secret"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("refreshToken3", response.body.refreshToken);
+%}
+
+### 11.9 Refresh token 3 (200)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken3}}"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("refreshToken4", response.body.refreshToken);
+%}
+
+### 11.10 Logout with the current token (204)
+POST {{host}}/api/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken4}}"
+}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 11.11 Refresh after logout (401)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken4}}"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 11.12 Logout with an unknown token is still 204 (idempotent)
+POST {{host}}/api/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "this-token-does-not-exist"
+}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 11.13 Register also returns a refresh token (201)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "company": {
+    "name": "Refresh Co",
+    "legalName": "Refresh Co LTDA",
+    "taxId": "55.555.555/0001-91",
+    "email": "contato@refresh.com",
+    "phone": "11900007777"
+  },
+  "adminName": "Refresh Admin",
+  "adminEmail": "refresh@authtest.com",
+  "adminPassword": "Sup3r-secret"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("refresh token returned", function () { client.assert(response.body.refreshToken && response.body.refreshToken.length >= 40); });
+%}

@@ -10,4 +10,5 @@ public interface CompanyRepository extends JpaRepository<Company, UUID>, JpaSpec
 
     boolean existsByTaxId(String taxId);
     boolean existsByTaxIdAndIdNot(String taxId, UUID id);
+    boolean existsByIdAndActiveTrue(UUID id);
 }

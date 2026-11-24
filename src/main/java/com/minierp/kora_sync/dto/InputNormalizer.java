@@ -21,4 +21,8 @@ public final class InputNormalizer {
     static String emptyToNull(String value) {
         return value == null || value.isEmpty() ? null : value;
     }
+
+    static String email(String value) {
+        return emptyToNull(value == null ? null : value.strip().toLowerCase(Locale.ROOT));
+    }
 }

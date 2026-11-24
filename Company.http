@@ -1338,3 +1338,234 @@ GET {{host}}/api/companies/{{companyB}}/cash-flow/forecast?from=2031-03-01&to=20
 GET {{host}}/api/companies/00000000-0000-0000-0000-000000000000/cash-flow/realized?from=2025-03-01&to=2025-03-05
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+# ---------------------------------------------------------------
+# 10. AUTHENTICATION
+# ---------------------------------------------------------------
+
+### 10.1 Register company and administrator (201)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "company": {
+    "name": "Auth Test Co",
+    "legalName": "Auth Test Co LTDA",
+    "taxId": "11.111.111/0001-91",
+    "email": "contato@authtest.com",
+    "phone": "(11) 90000-1111"
+  },
+  "adminName": "  Ana Souza  ",
+  "adminEmail": "Admin@AuthTest.com",
+  "adminPassword": "Sup3r-secret"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("token returned", function () {
+        client.assert(response.body.accessToken && response.body.accessToken.length > 20);
+        client.assert(response.body.tokenType === "Bearer");
+        client.assert(response.body.expiresIn === 900, "got " + response.body.expiresIn);
+    });
+    client.test("user is ADMIN with normalized data", function () {
+        client.assert(response.body.user.role === "ADMIN");
+        client.assert(response.body.user.email === "admin@authtest.com", "got " + response.body.user.email);
+        client.assert(response.body.user.name === "Ana Souza", "got " + response.body.user.name);
+    });
+    client.test("password never returned", function () {
+        client.assert(response.body.user.passwordHash === undefined && response.body.user.password === undefined);
+    });
+    client.global.set("authToken", response.body.accessToken);
+    client.global.set("authCompanyId", response.body.user.companyId);
+%}
+
+### 10.2 Same e-mail in another case, different company (409)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "company": {
+    "name": "Other Co",
+    "legalName": "Other Co LTDA",
+    "taxId": "22.222.222/0001-91",
+    "email": "contato@other.com",
+    "phone": "11900002222"
+  },
+  "adminName": "Someone Else",
+  "adminEmail": "ADMIN@authtest.com",
+  "adminPassword": "Sup3r-secret"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 10.3 Same company tax id, new e-mail (409)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "company": {
+    "name": "Auth Test Copy",
+    "legalName": "Auth Test Copy LTDA",
+    "taxId": "11111111000191",
+    "email": "copy@authtest.com",
+    "phone": "11900003333"
+  },
+  "adminName": "Copy Admin",
+  "adminEmail": "copy@authtest.com",
+  "adminPassword": "Sup3r-secret"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 10.4 Short password, invalid e-mail, invalid tax id (400)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "company": {
+    "name": "Bad Co",
+    "legalName": "Bad Co LTDA",
+    "taxId": "11111111000199",
+    "email": "contato@bad.com",
+    "phone": "11900004444"
+  },
+  "adminName": "Bad Admin",
+  "adminEmail": "not-an-email",
+  "adminPassword": "short"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 10.5 Password longer than 72 bytes (400)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "company": {
+    "name": "Long Co",
+    "legalName": "Long Co LTDA",
+    "taxId": "44444444000191",
+    "email": "contato@long.com",
+    "phone": "11900005555"
+  },
+  "adminName": "Long Admin",
+  "adminEmail": "long@long.com",
+  "adminPassword": "ççççççççççççççççççççççççççççççççççççççç"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 10.6 Login, e-mail with other case and spaces (200)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "  ADMIN@authtest.com ",
+  "password": "Sup3r-secret"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("token returned", function () { client.assert(response.body.accessToken && response.body.accessToken.length > 20); });
+    client.global.set("authToken", response.body.accessToken);
+%}
+
+### 10.7 Wrong password (401)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@authtest.com",
+  "password": "wrong-password"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 10.8 Unknown e-mail (401, same answer)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "nobody@authtest.com",
+  "password": "Sup3r-secret"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 10.9 Blank password (400)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@authtest.com",
+  "password": ""
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 10.10 Who am I, with token (200)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{authToken}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("identity matches the token", function () {
+        client.assert(response.body.email === "admin@authtest.com");
+        client.assert(response.body.role === "ADMIN");
+        client.assert(response.body.active === true);
+    });
+%}
+
+### 10.11 Who am I, no token (401)
+GET {{host}}/api/auth/me
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 10.12 Who am I, forged token (401)
+GET {{host}}/api/auth/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.invalidsignature
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 10.13 Rest of the API is still open in this part (200)
+GET {{host}}/api/companies?page=0&size=1
+
+> {% client.test("200 OK (temporary, locked in 7.3)", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 10.14 Register a third company to test inactive companies (201)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "company": {
+    "name": "Inactive Co",
+    "legalName": "Inactive Co LTDA",
+    "taxId": "33.333.333/0001-91",
+    "email": "contato@inactive.com",
+    "phone": "11900006666"
+  },
+  "adminName": "Inactive Admin",
+  "adminEmail": "inactive@authtest.com",
+  "adminPassword": "Sup3r-secret"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("inactiveCompanyId", response.body.user.companyId);
+%}
+
+### 10.15 Deactivate that company (204)
+DELETE {{host}}/api/companies/{{inactiveCompanyId}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 10.16 User of an inactive company cannot sign in (401)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "inactive@authtest.com",
+  "password": "Sup3r-secret"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}

@@ -24,6 +24,13 @@ spring:
     virtual:
       enabled: true
 
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
+      issuer: kora-sync
+      access-token-ttl: 15m
+
 springdoc:
   api-docs:
     enabled: ${SPRINGDOC_ENABLED:true}

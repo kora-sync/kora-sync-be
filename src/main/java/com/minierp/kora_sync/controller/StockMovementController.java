@@ -22,6 +22,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.SortDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -45,13 +46,15 @@ public class StockMovementController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER') or !#request.movementType().isRestrictedToManagers()")
     @Operation(
             summary = "Register a stock movement",
             description = "Registers an ENTRY, EXIT or ADJUSTMENT for the product and updates its balance "
                     + "atomically. ENTRY and EXIT require a quantity greater than zero. For ADJUSTMENT the "
                     + "quantity is the counted balance and a reason is required. An EXIT larger than the "
                     + "current balance is refused. Products in UN, CX or PCT accept whole quantities only. "
-                    + "Inactive products do not accept movements.")
+                    + "Inactive products do not accept movements. ENTRY and EXIT: any signed-in user. "
+                    + "ADJUSTMENT: MANAGER or ADMIN only.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Movement registered; the response shows the "
                     + "resulting balance"),

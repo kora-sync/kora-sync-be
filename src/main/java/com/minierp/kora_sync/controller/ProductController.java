@@ -5,6 +5,7 @@ import com.minierp.kora_sync.dto.ProductFilter;
 import com.minierp.kora_sync.dto.ProductRequest;
 import com.minierp.kora_sync.dto.ProductResponse;
 import com.minierp.kora_sync.security.CurrentCompany;
+import com.minierp.kora_sync.security.RequiresManager;
 import com.minierp.kora_sync.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -45,6 +46,7 @@ public class ProductController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @RequiresManager
     @Operation(
             summary = "Create a product",
             description = "Creates a product for the given company. The SKU must be unique within the company. "
@@ -111,6 +113,7 @@ public class ProductController {
 
     @PutMapping("/{id}")
     @ResponseStatus(HttpStatus.OK)
+    @RequiresManager
     @Operation(
             summary = "Update a product",
             description = "Replaces all editable fields of the product. The SKU must remain unique within the "
@@ -132,6 +135,7 @@ public class ProductController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresManager
     @Operation(
             summary = "Deactivate a product",
             description = "Marks the product as inactive. The record, its stock balance and its movement history "

@@ -3,6 +3,7 @@ package com.minierp.kora_sync.controller;
 import com.minierp.kora_sync.dto.ForecastCashFlowResponse;
 import com.minierp.kora_sync.dto.RealizedCashFlowResponse;
 import com.minierp.kora_sync.security.CurrentCompany;
+import com.minierp.kora_sync.security.RequiresManager;
 import com.minierp.kora_sync.service.CashFlowService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,6 +38,7 @@ public class CashFlowController {
 
     @GetMapping("/realized")
     @ResponseStatus(HttpStatus.OK)
+    @RequiresManager
     @Operation(
             summary = "Get the realized cash flow",
             description = "Returns, for the period, the money that actually moved: settlements grouped by their "
@@ -63,6 +65,7 @@ public class CashFlowController {
 
     @GetMapping("/forecast")
     @ResponseStatus(HttpStatus.OK)
+    @RequiresManager
     @Operation(
             summary = "Get the forecast cash flow",
             description = "Returns, for the period, what is still expected: the remaining amount of OPEN and "

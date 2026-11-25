@@ -22,4 +22,11 @@ public enum MovementType {
     public boolean isReasonRequired() {
         return reasonRequired;
     }
+
+    public boolean isRestrictedToManagers() {
+        return switch (this) {
+            case ENTRY, EXIT -> false;
+            case ADJUSTMENT -> true;
+        };
+    }
 }

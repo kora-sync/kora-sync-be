@@ -2474,3 +2474,354 @@ Content-Type: application/json
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
     client.global.set("operatorToken", response.body.accessToken);
 %}
+
+# ---------------------------------------------------------------
+# 14. PERMISSIONS BY ROLE (ADMIN = tokenA, MANAGER = managerToken, OPERATOR = operatorToken)
+# Bodies below are valid on purpose: validation runs before the permission check.
+# ---------------------------------------------------------------
+
+### 14.1 OPERATOR reads customers (200)
+GET {{host}}/api/customers
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 14.2 OPERATOR reads suppliers (200)
+GET {{host}}/api/suppliers
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 14.3 OPERATOR reads products (200)
+GET {{host}}/api/products
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 14.4 OPERATOR reads stock history (200)
+GET {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 14.5 OPERATOR reads financial entries (200)
+GET {{host}}/api/financial-entries
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 14.6 OPERATOR reads settlements (200)
+GET {{host}}/api/financial-entries/{{entryPayable}}/settlements
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 14.7 OPERATOR reads its own company (200)
+GET {{host}}/api/company
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 14.8 OPERATOR registers a stock ENTRY (201)
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "movementType": "ENTRY",
+  "quantity": 1,
+  "reason": "Operator entry"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 14.9 OPERATOR registers a stock EXIT (201)
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "movementType": "EXIT",
+  "quantity": 1,
+  "reason": "Operator exit"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 14.10 OPERATOR cannot ADJUST stock (403)
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "movementType": "ADJUSTMENT",
+  "quantity": 4,
+  "reason": "Operator tries to adjust"
+}
+
+> {%
+    client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); });
+    client.test("ProblemDetail body", function () { client.assert(response.body.title === "Access denied"); });
+%}
+
+### 14.11 OPERATOR registers a settlement (201)
+POST {{host}}/api/financial-entries/{{entryPayable}}/settlements
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "amount": 10.00,
+  "paymentMethod": "CASH",
+  "notes": "Settled by the operator"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 14.12 OPERATOR cannot create a customer (403)
+POST {{host}}/api/customers
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "name": "Operator Customer",
+  "document": "111.444.777-35",
+  "email": "op@customer.com",
+  "phone": "11900001111"
+}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.13 OPERATOR cannot deactivate a customer (403)
+DELETE {{host}}/api/customers/{{customerA}}
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.14 OPERATOR cannot create a supplier (403)
+POST {{host}}/api/suppliers
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "name": "Operator Supplier",
+  "document": "40.688.134/0001-61",
+  "email": "op@supplier.com",
+  "phone": "11900002222"
+}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.15 OPERATOR cannot create a product (403)
+POST {{host}}/api/products
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "sku": "operator-item",
+  "name": "Operator item",
+  "unit": "UN",
+  "salePrice": 5.00
+}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.16 OPERATOR cannot edit a price (403)
+PUT {{host}}/api/products/{{productRice}}
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "sku": "arroz",
+  "name": "Arroz tipo 1",
+  "unit": "KG",
+  "costPrice": 5.00,
+  "salePrice": 99.00,
+  "minimumStock": 8
+}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.17 OPERATOR cannot deactivate a product (403)
+DELETE {{host}}/api/products/{{productRice}}
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.18 OPERATOR cannot create a financial entry (403)
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "description": "Operator entry",
+  "amount": 10.00,
+  "dueDate": "2031-04-01"
+}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.19 OPERATOR cannot cancel a financial entry (403)
+DELETE {{host}}/api/financial-entries/{{entryPayable}}
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.20 OPERATOR cannot read the cash flow (403)
+GET {{host}}/api/cash-flow/realized?from=2025-03-01&to=2025-03-05
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.21 OPERATOR cannot update the company (403)
+PUT {{host}}/api/company
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "name": "Hacked",
+  "legalName": "Tenant A LTDA",
+  "taxId": "98.765.432/0001-98",
+  "email": "contato@tenanta.com",
+  "phone": "11900008888"
+}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.22 MANAGER creates a customer (201)
+POST {{host}}/api/customers
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "name": "Manager Customer",
+  "document": "111.444.777-35",
+  "email": "mgr@customer.com",
+  "phone": "11900003333"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("mgrCustomer", response.body.id);
+%}
+
+### 14.23 MANAGER deactivates that customer (204)
+DELETE {{host}}/api/customers/{{mgrCustomer}}
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 14.24 MANAGER creates a product (201)
+POST {{host}}/api/products
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "sku": "mgr-item",
+  "name": "Manager item",
+  "unit": "UN",
+  "salePrice": 9.90
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("mgrProduct", response.body.id);
+%}
+
+### 14.25 MANAGER edits the price (200)
+PUT {{host}}/api/products/{{mgrProduct}}
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "sku": "mgr-item",
+  "name": "Manager item",
+  "unit": "UN",
+  "salePrice": 11.90
+}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200 && response.body.salePrice === 11.9, "got " + response.status); }); %}
+
+### 14.26 MANAGER deactivates the product (204)
+DELETE {{host}}/api/products/{{mgrProduct}}
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 14.27 MANAGER adjusts the stock to a counted balance of 6 (201)
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "movementType": "ADJUSTMENT",
+  "quantity": 6,
+  "reason": "Manager count"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("balance 6", function () { client.assert(response.body.balanceAfter === 6, "got " + response.body.balanceAfter); });
+%}
+
+### 14.28 MANAGER creates and cancels a financial entry (201)
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "entryType": "RECEIVABLE",
+  "description": "Manager sale",
+  "amount": 10.00,
+  "dueDate": "2031-04-01"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("mgrEntry", response.body.id);
+%}
+
+### 14.29 MANAGER cancels it (204)
+DELETE {{host}}/api/financial-entries/{{mgrEntry}}
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 14.30 MANAGER reads the cash flow (200)
+GET {{host}}/api/cash-flow/realized?from=2025-03-01&to=2025-03-05
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 14.31 MANAGER reads the company (200)
+GET {{host}}/api/company
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 14.32 MANAGER cannot update the company (403)
+PUT {{host}}/api/company
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "name": "Manager Rename",
+  "legalName": "Tenant A LTDA",
+  "taxId": "98.765.432/0001-98",
+  "email": "contato@tenanta.com",
+  "phone": "11900008888"
+}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.33 MANAGER cannot deactivate the company (403)
+DELETE {{host}}/api/company
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 14.34 ADMIN can do the manager's work too, cash flow (200)
+GET {{host}}/api/cash-flow/forecast?from=2031-03-01&to=2031-03-07
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}

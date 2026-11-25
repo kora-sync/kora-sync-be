@@ -3,6 +3,7 @@ package com.minierp.kora_sync.controller;
 import com.minierp.kora_sync.dto.CompanyRequest;
 import com.minierp.kora_sync.dto.CompanyResponse;
 import com.minierp.kora_sync.security.CurrentCompany;
+import com.minierp.kora_sync.security.RequiresAdmin;
 import com.minierp.kora_sync.service.CompanyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -48,6 +49,7 @@ public class CompanyController {
 
     @PutMapping
     @ResponseStatus(HttpStatus.OK)
+    @RequiresAdmin
     @Operation(
             summary = "Update my company",
             description = "Replaces the data of the signed-in user's company. "
@@ -63,6 +65,7 @@ public class CompanyController {
 
     @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresAdmin
     @Operation(
             summary = "Deactivate my company",
             description = "Deactivates the company of the signed-in user. Its users can no longer sign in "

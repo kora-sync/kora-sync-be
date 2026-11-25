@@ -4,6 +4,7 @@ import com.minierp.kora_sync.dto.CustomerRequest;
 import com.minierp.kora_sync.dto.CustomerResponse;
 import com.minierp.kora_sync.dto.PageResponse;
 import com.minierp.kora_sync.security.CurrentCompany;
+import com.minierp.kora_sync.security.RequiresManager;
 import com.minierp.kora_sync.service.CustomerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -45,6 +46,7 @@ public class CustomerController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @RequiresManager
     @Operation(
             summary = "Create a customer",
             description = "Creates a customer for the given company. The document (CPF/CNPJ), when informed, "
@@ -105,6 +107,7 @@ public class CustomerController {
 
     @PutMapping("/{id}")
     @ResponseStatus(HttpStatus.OK)
+    @RequiresManager
     @Operation(
             summary = "Update a customer",
             description = "Replaces all editable fields of the customer. The document, when informed, must remain "
@@ -126,6 +129,7 @@ public class CustomerController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresManager
     @Operation(
             summary = "Deactivate a customer",
             description = "Marks the customer as inactive. The record and its history are kept, so the customer "

@@ -4,6 +4,7 @@ import com.minierp.kora_sync.dto.PageResponse;
 import com.minierp.kora_sync.dto.SupplierRequest;
 import com.minierp.kora_sync.dto.SupplierResponse;
 import com.minierp.kora_sync.security.CurrentCompany;
+import com.minierp.kora_sync.security.RequiresManager;
 import com.minierp.kora_sync.service.SupplierService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -44,6 +45,7 @@ public class SupplierController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @RequiresManager
     @Operation(
             summary = "Create a supplier",
             description = "Creates a supplier for the given company. The document (CPF/CNPJ), when informed, "
@@ -104,6 +106,7 @@ public class SupplierController {
 
     @PutMapping("/{id}")
     @ResponseStatus(HttpStatus.OK)
+    @RequiresManager
     @Operation(
             summary = "Update a supplier",
             description = "Replaces all editable fields of the supplier. The document, when informed, must remain "
@@ -125,6 +128,7 @@ public class SupplierController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresManager
     @Operation(
             summary = "Deactivate a supplier",
             description = "Marks the supplier as inactive. The record and its history are kept, so the supplier "

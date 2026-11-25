@@ -7,6 +7,7 @@ import com.minierp.kora_sync.dto.PageResponse;
 import com.minierp.kora_sync.enums.EntryStatus;
 import com.minierp.kora_sync.enums.EntryType;
 import com.minierp.kora_sync.security.CurrentCompany;
+import com.minierp.kora_sync.security.RequiresManager;
 import com.minierp.kora_sync.service.FinancialEntryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -50,6 +51,7 @@ public class FinancialEntryController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @RequiresManager
     @Operation(
             summary = "Create a financial entry",
             description = "Creates a receivable or a payable with a single due date. New entries start OPEN with "
@@ -125,6 +127,7 @@ public class FinancialEntryController {
 
     @PutMapping("/{id}")
     @ResponseStatus(HttpStatus.OK)
+    @RequiresManager
     @Operation(
             summary = "Update a financial entry",
             description = "Replaces the editable fields of an OPEN entry. The entry type cannot be changed. "
@@ -147,6 +150,7 @@ public class FinancialEntryController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresManager
     @Operation(
             summary = "Cancel a financial entry",
             description = "Marks an OPEN entry as CANCELED. The record is kept for history. Canceling an entry "

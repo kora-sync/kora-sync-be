@@ -13,12 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -60,6 +55,24 @@ public class AuthController {
         return authService.signin(request);
     }
 
+    @PutMapping("/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(
+            summary = "Change my password",
+            description = "Changes the password of the signed-in user. Every open session of the user, "
+                    + "including the current one, is revoked, so the user must sign in again with the new "
+                    + "password. An access token already issued stays valid until it expires.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Password changed"),
+            @ApiResponse(responseCode = "400",
+                    description = "Current password incorrect, or the new one equals the current one",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    public void changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(request);
+    }
+
     @PostMapping("/refresh")
     @ResponseStatus(HttpStatus.OK)
     @Operation(
@@ -98,8 +111,6 @@ public class AuthController {
             description = "Returns the user identified by the access token sent in the Authorization header.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Signed-in user"),
-            @ApiResponse(responseCode = "404", description = "The user of the token no longer exists",
-                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public UserResponse me() {
         return authService.me();

@@ -33,4 +33,7 @@ public class StockMovement extends BaseEntity {
 
     @Column(length = 255)
     private String reason;
+
+    @Column(name = "created_by", updatable = false)
+    private UUID createdBy;
 }

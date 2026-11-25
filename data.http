@@ -2825,3 +2825,229 @@ GET {{host}}/api/cash-flow/forecast?from=2031-03-01&to=2031-03-07
 Authorization: Bearer {{tokenA}}
 
 > {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+# ---------------------------------------------------------------
+# 15. ERRORS AS PROBLEMDETAIL, AUTHOR OF OPERATIONS AND PASSWORD CHANGE
+# ---------------------------------------------------------------
+
+### 15.1 Missing token returns a ProblemDetail (401)
+GET {{host}}/api/customers
+
+> {%
+    client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); });
+    client.test("problem+json body", function () {
+        client.assert(response.contentType.mimeType === "application/problem+json", "got " + response.contentType.mimeType);
+        client.assert(response.body.status === 401, "status " + response.body.status);
+        client.assert(response.body.title === "Unauthorized", "title " + response.body.title);
+    });
+    client.test("WWW-Authenticate header is kept", function () {
+        client.assert(String(response.headers.valueOf("WWW-Authenticate")).indexOf("Bearer") === 0);
+    });
+%}
+
+### 15.2 Forged token returns a ProblemDetail too (401)
+GET {{host}}/api/customers
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.invalidsignature
+
+> {%
+    client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); });
+    client.test("problem+json body", function () {
+        client.assert(response.contentType.mimeType === "application/problem+json", "got " + response.contentType.mimeType);
+        client.assert(response.body.title === "Unauthorized");
+    });
+    client.test("WWW-Authenticate header is kept", function () {
+        client.assert(String(response.headers.valueOf("WWW-Authenticate")).indexOf("Bearer") === 0);
+    });
+%}
+
+### 15.3 The administrator registers a stock entry, author is recorded (201)
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "movementType": "ENTRY",
+  "quantity": 1,
+  "reason": "Entry by the administrator"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("createdBy is the administrator", function () {
+        client.assert(response.body.createdBy === client.global.get("adminAId"), "got " + response.body.createdBy);
+    });
+%}
+
+### 15.4 The history shows the author (200)
+GET {{host}}/api/products/{{productRice}}/stock-movements?size=1
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("newest movement has its author", function () {
+        client.assert(response.body.data[0].createdBy === client.global.get("adminAId"), "got " + response.body.data[0].createdBy);
+    });
+%}
+
+### 15.5 The operator registers a settlement, author is recorded (201)
+POST {{host}}/api/financial-entries/{{entryPayable}}/settlements
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "amount": 5.00,
+  "paymentMethod": "CASH"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("createdBy is the operator", function () {
+        client.assert(response.body.createdBy === client.global.get("operatorId"), "got " + response.body.createdBy);
+    });
+%}
+
+### 15.6 Create a user to test the password change (201)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Pwd User",
+  "email": "pwd@tenanta.com",
+  "password": "Sup3r-secret",
+  "role": "OPERATOR"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("pwdUserId", response.body.id);
+%}
+
+### 15.7 That user signs in (200)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "pwd@tenanta.com",
+  "password": "Sup3r-secret"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("pwdToken", response.body.accessToken);
+    client.global.set("pwdRefresh", response.body.refreshToken);
+%}
+
+### 15.8 Change password with a wrong current password (400)
+PUT {{host}}/api/auth/password
+Authorization: Bearer {{pwdToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "wrong-password",
+  "newPassword": "N3w-pass-9999"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 15.9 New password equal to the current one (400)
+PUT {{host}}/api/auth/password
+Authorization: Bearer {{pwdToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "Sup3r-secret",
+  "newPassword": "Sup3r-secret"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 15.10 New password too short (400)
+PUT {{host}}/api/auth/password
+Authorization: Bearer {{pwdToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "Sup3r-secret",
+  "newPassword": "short"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 15.11 Change password without token (401)
+PUT {{host}}/api/auth/password
+Content-Type: application/json
+
+{
+  "currentPassword": "Sup3r-secret",
+  "newPassword": "N3w-pass-9999"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 15.12 Change password (204)
+PUT {{host}}/api/auth/password
+Authorization: Bearer {{pwdToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "Sup3r-secret",
+  "newPassword": "N3w-pass-9999"
+}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 15.13 Sessions opened before the change were revoked (401)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{pwdRefresh}}"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 15.14 Old password no longer works (401)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "pwd@tenanta.com",
+  "password": "Sup3r-secret"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 15.15 New password works (200)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "pwd@tenanta.com",
+  "password": "N3w-pass-9999"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("pwdToken", response.body.accessToken);
+%}
+
+### 15.16 Who am I with the new token (200)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{pwdToken}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("it is that user", function () { client.assert(response.body.email === "pwd@tenanta.com"); });
+%}
+
+### 15.17 The administrator deactivates that user (204)
+DELETE {{host}}/api/users/{{pwdUserId}}
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 15.18 Its token no longer identifies anyone: /me is 401, not 404 (401)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{pwdToken}}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}

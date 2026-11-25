@@ -12,6 +12,7 @@ import com.minierp.kora_sync.model.Product;
 import com.minierp.kora_sync.model.StockMovement;
 import com.minierp.kora_sync.repository.ProductRepository;
 import com.minierp.kora_sync.repository.StockMovementRepository;
+import com.minierp.kora_sync.security.CurrentUser;
 import com.minierp.kora_sync.service.StockMovementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class StockMovementServiceImpl implements StockMovementService {
     private final StockMovementRepository stockMovementRepository;
     private final ProductRepository productRepository;
     private final StockMovementMapper stockMovementMapper;
+    private final CurrentUser currentUser;
 
     @Override
     @Transactional
@@ -66,6 +68,7 @@ public class StockMovementServiceImpl implements StockMovementService {
         movement.setQuantity(newBalance.subtract(current));
         movement.setBalanceAfter(newBalance);
         movement.setReason(request.reason());
+        movement.setCreatedBy(currentUser.get().userId());
 
         StockMovement saved = stockMovementRepository.save(movement);
 

@@ -13,6 +13,7 @@ import com.minierp.kora_sync.model.FinancialEntry;
 import com.minierp.kora_sync.model.Settlement;
 import com.minierp.kora_sync.repository.FinancialEntryRepository;
 import com.minierp.kora_sync.repository.SettlementRepository;
+import com.minierp.kora_sync.security.CurrentUser;
 import com.minierp.kora_sync.service.SettlementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,7 @@ public class SettlementServiceImpl implements SettlementService {
     private final SettlementRepository settlementRepository;
     private final FinancialEntryRepository financialEntryRepository;
     private final SettlementMapper settlementMapper;
+    private final CurrentUser currentUser;
     private final Clock clock;
 
     @Override
@@ -74,6 +76,7 @@ public class SettlementServiceImpl implements SettlementService {
         settlement.setSettledOn(settledOn);
         settlement.setPaymentMethod(request.paymentMethod());
         settlement.setNotes(request.notes());
+        settlement.setCreatedBy(currentUser.get().userId());
         Settlement saved = settlementRepository.save(settlement);
 
         log.info("Settlement registered: id={} entryid={} companyId={} amount={} status={}",

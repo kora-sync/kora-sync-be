@@ -8,4 +8,5 @@ public interface AuthService {
     AuthResponse refresh(RefreshTokenRequest request);
     void logout(RefreshTokenRequest request);
     UserResponse me();
+    void changePassword(ChangePasswordRequest request);
 }

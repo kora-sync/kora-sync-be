@@ -1,13 +1,10 @@
 package com.minierp.kora_sync.service.impl;
 
-import com.minierp.kora_sync.dto.AuthResponse;
-import com.minierp.kora_sync.dto.LoginRequest;
-import com.minierp.kora_sync.dto.RefreshTokenRequest;
-import com.minierp.kora_sync.dto.RegisterRequest;
-import com.minierp.kora_sync.dto.UserResponse;
+import com.minierp.kora_sync.dto.*;
 import com.minierp.kora_sync.enums.Role;
 import com.minierp.kora_sync.exception.BusinessConflictException;
 import com.minierp.kora_sync.exception.InvalidCredentialsException;
+import com.minierp.kora_sync.exception.InvalidInputException;
 import com.minierp.kora_sync.exception.ResourceNotFoundException;
 import com.minierp.kora_sync.mapper.CompanyMapper;
 import com.minierp.kora_sync.mapper.UserMapper;
@@ -136,9 +133,34 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(readOnly = true)
     public UserResponse me() {
         AuthenticatedUser current = currentUser.get();
-        User user = userRepository.findByIdAndCompanyId(current.userId(), current.companyId())
-                .orElseThrow(() -> new ResourceNotFoundException("User", current.userId()));
-        return userMapper.toResponse(user);
+        return userRepository.findByIdAndCompanyId(current.userId(), current.companyId())
+                .filter(User::isActive)
+                .map(userMapper::toResponse)
+                .orElseThrow(this::noLongerAuthenticated);
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(ChangePasswordRequest request) {
+        AuthenticatedUser current = currentUser.get();
+        User user = userRepository.findByIdAndCompanyIdForUpdate(current.userId(), current.companyId())
+                .filter(User::isActive)
+                .orElseThrow(this::noLongerAuthenticated);
+
+        if (!passwordHasher.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new InvalidInputException("The current password is incorrect");
+        }
+        if (passwordHasher.matches(request.newPassword(), user.getPasswordHash())) {
+            throw new InvalidInputException("The new password must be different from the current one");
+        }
+
+        user.setPasswordHash(passwordHasher.hash(request.newPassword()));
+        refreshTokenRepository.revokeAllByUser(user.getId(), clock.instant());
+        log.info("Password changed by the user: userId={}", user.getId());
+    }
+
+    private InvalidCredentialsException noLongerAuthenticated() {
+        return new InvalidCredentialsException("The user of the access token no longer exists or is inactive");
     }
 
     private String issueRefreshToken(UUID userId, UUID familyId) {

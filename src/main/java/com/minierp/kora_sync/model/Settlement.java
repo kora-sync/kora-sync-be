@@ -39,4 +39,7 @@ public class Settlement extends BaseEntity {
 
     @Column(length = 255)
     private String notes;
+
+    @Column(name = "created_by", updatable = false)
+    private UUID createdBy;
 }

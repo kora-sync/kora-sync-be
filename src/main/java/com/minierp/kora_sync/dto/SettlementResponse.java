@@ -31,6 +31,10 @@ public record SettlementResponse(
         String notes,
 
         @Schema(description = "When the settlement was recorded, in UTC", example = "2026-11-20T15:30:00.250Z")
-        Instant createdAt
+        Instant createdAt,
+
+        @Schema(description = "User who registered it. Empty for records created before the author was tracked",
+                example = "0d6c8e2a-4b1f-4c93-a7e5-3f9b1d5c7a20")
+                UUID createdBy
 ) {
 }

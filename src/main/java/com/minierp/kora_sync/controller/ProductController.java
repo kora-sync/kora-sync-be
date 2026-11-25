@@ -4,6 +4,7 @@ import com.minierp.kora_sync.dto.PageResponse;
 import com.minierp.kora_sync.dto.ProductFilter;
 import com.minierp.kora_sync.dto.ProductRequest;
 import com.minierp.kora_sync.dto.ProductResponse;
+import com.minierp.kora_sync.security.CurrentCompany;
 import com.minierp.kora_sync.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -11,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +35,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/companies/{companyId}/products")
+@RequestMapping("/api/products")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 @Tag(name = "Products", description = "Register and manage the products of a company and see their stock balance")
 public class ProductController {
@@ -55,8 +58,7 @@ public class ProductController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public ProductResponse create(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Valid @RequestBody ProductRequest request) {
         return productService.create(companyId, request);
     }
@@ -74,8 +76,7 @@ public class ProductController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public PageResponse<ProductResponse> list(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Case-insensitive partial match on the product name", example = "pão")
             @RequestParam(required = false) String name,
             @Parameter(description = "Partial match on the SKU (case-insensitive)", example = "pao-")
@@ -102,8 +103,7 @@ public class ProductController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public ProductResponse getById(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Product identifier", example = "4e8b7d1a-6c2f-4a39-b5d0-91f3a7c2e864")
             @PathVariable UUID id) {
         return productService.findGetById(companyId, id);
@@ -123,8 +123,7 @@ public class ProductController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public ProductResponse update(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Product identifier", example = "4e8b7d1a-6c2f-4a39-b5d0-91f3a7c2e864")
             @PathVariable UUID id,
             @Valid @RequestBody ProductRequest request) {
@@ -144,8 +143,7 @@ public class ProductController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public void deactivate(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Product identifier", example = "4e8b7d1a-6c2f-4a39-b5d0-91f3a7c2e864")
             @PathVariable UUID id) {
         productService.deactivate(companyId, id);

@@ -2,6 +2,7 @@ package com.minierp.kora_sync.controller;
 
 import com.minierp.kora_sync.dto.ForecastCashFlowResponse;
 import com.minierp.kora_sync.dto.RealizedCashFlowResponse;
+import com.minierp.kora_sync.security.CurrentCompany;
 import com.minierp.kora_sync.service.CashFlowService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -9,13 +10,13 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -25,7 +26,8 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/companies/{companyId}/cash-flow")
+@RequestMapping("/api/cash-flow")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 @Tag(name = "Cash Flow",
         description = "See the money that moved (realized) and the money still expected (forecast) by day")
@@ -51,8 +53,7 @@ public class CashFlowController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public RealizedCashFlowResponse realized(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "First day of the period (inclusive), yyyy-MM-dd", example = "2026-11-01")
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @Parameter(description = "Last day of the period (inclusive), yyyy-MM-dd", example = "2026-11-30")
@@ -77,8 +78,7 @@ public class CashFlowController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public ForecastCashFlowResponse forecast(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "First day of the period (inclusive), yyyy-MM-dd", example = "2026-12-01")
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @Parameter(description = "Last day of the period (inclusive), yyyy-MM-dd", example = "2026-12-31")

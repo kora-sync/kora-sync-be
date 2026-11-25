@@ -28,30 +28,6 @@ public class CompanyServiceImpl implements CompanyService {
     private final CompanyMapper companyMapper;
 
     @Override
-    @Transactional
-    public CompanyResponse create(CompanyRequest request) {
-        if (companyRepository.existsByTaxId(request.taxId())) {
-            throw new BusinessConflictException("Tax id already registered: " + request.taxId());
-        }
-
-        Company company = companyRepository.save(companyMapper.toEntity(request));
-
-        log.info("Company created: id={}", company.getId());
-
-        return companyMapper.toResponse(company);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public PageResponse<CompanyResponse> findAll(String name, Boolean active, Pageable pageable) {
-        Page<CompanyResponse> page = companyRepository
-                .findAll(buildFilters(name, active), pageable)
-                .map(companyMapper::toResponse);
-
-                return PageResponse.from(page);
-    }
-
-    @Override
     @Transactional(readOnly = true)
     public CompanyResponse findGetById(UUID id) {
         return companyMapper.toResponse(findOrThrow(id));

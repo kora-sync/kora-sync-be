@@ -1,115 +1,190 @@
 @host = http://localhost:8080
 
-### 0.1 Database must be empty before a full run (200)
-GET {{host}}/api/companies?page=0&size=1
+### 0.1 Reset globals (run the whole file only on an empty database: TRUNCATE companies CASCADE;)
+GET {{host}}/v3/api-docs
 
 > {%
     client.global.clearAll();
-    client.test("Database is clean (run: TRUNCATE companies CASCADE;)", function () {
-        client.assert(response.body.page.totalElements === 0,
-            "Database is not empty. Run: TRUNCATE companies CASCADE;");
+    client.test("API is up", function () { client.assert(response.status === 200, "got " + response.status); });
+%}
+
+### 0.2 Register tenant A (201)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "company": {
+    "name": "Tenant A",
+    "legalName": "Tenant A LTDA",
+    "taxId": "98.765.432/0001-98",
+    "email": "contato@tenanta.com",
+    "phone": "11900008888"
+  },
+  "adminName": "Admin A",
+  "adminEmail": "admin@tenanta.com",
+  "adminPassword": "Sup3r-secret"
+}
+
+> {%
+    client.test("201 Created (409 means the database is not empty: run TRUNCATE companies CASCADE;)", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("companyA", response.body.user.companyId);
+    client.global.set("tokenA", response.body.accessToken);
+%}
+
+### 0.3 Register tenant B (201)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "company": {
+    "name": "Tenant B",
+    "legalName": "Tenant B LTDA",
+    "taxId": "10.203.040/0001-94",
+    "email": "contato@tenantb.com",
+    "phone": "11900009999"
+  },
+  "adminName": "Admin B",
+  "adminEmail": "admin@tenantb.com",
+  "adminPassword": "Sup3r-secret"
+}
+
+> {%
+    client.test("201 Created (409 means the database is not empty: run TRUNCATE companies CASCADE;)", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("companyB", response.body.user.companyId);
+    client.global.set("tokenB", response.body.accessToken);
+%}
+
+### 0.4 Renew token A (use it when the 15 minutes expire)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@tenanta.com",
+  "password": "Sup3r-secret"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("tokenA", response.body.accessToken);
+%}
+
+### 0.5 Renew token B (use it when the 15 minutes expire)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@tenantb.com",
+  "password": "Sup3r-secret"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("tokenB", response.body.accessToken);
+%}
+
+################################################################
+# 1. COMPANY (the company of the signed-in user)
+################################################################
+
+### 1.1 Get my company, tenant A (200)
+GET {{host}}/api/company
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("it is tenant A", function () {
+        client.assert(response.body.id === client.global.get("companyA"), "got " + response.body.id);
+        client.assert(response.body.name === "Tenant A", "got " + response.body.name);
+        client.assert(response.body.taxId === "98765432000198", "got " + response.body.taxId);
     });
 %}
 
-################################################################
-# 1. COMPANIES
-################################################################
+### 1.2 Get my company, tenant B (200, each token sees its own company)
+GET {{host}}/api/company
+Authorization: Bearer {{tokenB}}
 
-### 1.1 Create company A (201)
-POST {{host}}/api/companies
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("it is tenant B", function () {
+        client.assert(response.body.id === client.global.get("companyB"), "got " + response.body.id);
+        client.assert(response.body.name === "Tenant B", "got " + response.body.name);
+    });
+%}
+
+### 1.3 Update my company (200)
+PUT {{host}}/api/company
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
-  "name": "Padaria Kora",
-  "legalName": "Padaria Kora LTDA",
-  "taxId": "11.222.333/0001-81",
-  "email": "contato@padariakora.com.br",
-  "phone": "(11) 98765-4321"
+  "name": "Tenant A Matriz",
+  "legalName": "Tenant A LTDA",
+  "taxId": "98.765.432/0001-98",
+  "email": "contato@tenanta.com",
+  "phone": "(11) 90000-8888"
 }
 
 > {%
-    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
-    client.test("taxId normalized to digits", function () { client.assert(response.body.taxId === "11222333000181"); });
-    client.global.set("companyA", response.body.id);
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("name updated, tax id unchanged", function () {
+        client.assert(response.body.name === "Tenant A Matriz", "got " + response.body.name);
+        client.assert(response.body.taxId === "98765432000198", "got " + response.body.taxId);
+    });
 %}
 
-### 1.2 Create company B (201)
-POST {{host}}/api/companies
+### 1.4 Update with the tax id of another company (409)
+PUT {{host}}/api/company
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
-  "name": "Mercado Sync",
-  "legalName": "Mercado Sync LTDA",
-  "taxId": "11.444.777/0001-61",
-  "email": "contato@mercadosync.com.br",
-  "phone": "(21) 91234-5678"
-}
-
-> {%
-    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
-    client.global.set("companyB", response.body.id);
-%}
-
-### 1.3 Duplicate tax id (409)
-POST {{host}}/api/companies
-Content-Type: application/json
-
-{
-  "name": "Outra Padaria",
-  "legalName": "Outra Padaria LTDA",
-  "taxId": "11222333000181",
-  "email": "outra@padaria.com.br",
-  "phone": "11911112222"
+  "name": "Tenant A Matriz",
+  "legalName": "Tenant A LTDA",
+  "taxId": "10.203.040/0001-94",
+  "email": "contato@tenanta.com",
+  "phone": "11900008888"
 }
 
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
-### 1.4 Invalid tax id (400)
-POST {{host}}/api/companies
+### 1.5 Invalid tax id (400)
+PUT {{host}}/api/company
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
-  "name": "Empresa Invalida",
-  "legalName": "Empresa Invalida LTDA",
-  "taxId": "11222333000199",
-  "email": "x@y.com",
-  "phone": "11911112222"
+  "name": "Tenant A Matriz",
+  "legalName": "Tenant A LTDA",
+  "taxId": "98765432000199",
+  "email": "contato@tenanta.com",
+  "phone": "11900008888"
 }
 
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
-### 1.5 List companies (200)
+### 1.6 My company without token (401)
+GET {{host}}/api/company
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 1.7 The old public list of companies is gone (404)
 GET {{host}}/api/companies?page=0&size=10
+Authorization: Bearer {{tokenA}}
 
-> {%
-    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
-    client.test("2 companies", function () { client.assert(response.body.page.totalElements === 2, "got " + response.body.page.totalElements); });
-%}
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
-### 1.6 Get company A (200)
-GET {{host}}/api/companies/{{companyA}}
-
-> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
-
-### 1.7 Update company A (200)
-PUT {{host}}/api/companies/{{companyA}}
+### 1.8 The old public create is gone, registration is the only way (404)
+POST {{host}}/api/companies
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
-  "name": "Padaria Kora Centro",
-  "legalName": "Padaria Kora LTDA",
-  "taxId": "11222333000181",
-  "email": "contato@padariakora.com.br",
-  "phone": "11987654321"
+  "name": "Sneaky Co",
+  "legalName": "Sneaky Co LTDA",
+  "taxId": "11.222.333/0001-81",
+  "email": "sneaky@co.com",
+  "phone": "11911112222"
 }
-
-> {%
-    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
-    client.test("name updated", function () { client.assert(response.body.name === "Padaria Kora Centro"); });
-%}
-
-### 1.8 Get unknown company (404)
-GET {{host}}/api/companies/00000000-0000-0000-0000-000000000000
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
@@ -119,7 +194,8 @@ GET {{host}}/api/companies/00000000-0000-0000-0000-000000000000
 ################################################################
 
 ### 2.1 Create customer in A (201)
-POST {{host}}/api/companies/{{companyA}}/customers
+POST {{host}}/api/customers
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -136,7 +212,8 @@ Content-Type: application/json
 %}
 
 ### 2.2 Duplicate document in A (409)
-POST {{host}}/api/companies/{{companyA}}/customers
+POST {{host}}/api/customers
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -149,7 +226,8 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 2.3 Same document in company B (201)
-POST {{host}}/api/companies/{{companyB}}/customers
+POST {{host}}/api/customers
+Authorization: Bearer {{tokenB}}
 Content-Type: application/json
 
 {
@@ -159,10 +237,14 @@ Content-Type: application/json
   "phone": "11999990000"
 }
 
-> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("customerB", response.body.id);
+%}
 
 ### 2.4 Invalid document (400)
-POST {{host}}/api/companies/{{companyA}}/customers
+POST {{host}}/api/customers
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -175,7 +257,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 2.5 List customers with filters (200)
-GET {{host}}/api/companies/{{companyA}}/customers?name=maria&active=true
+GET {{host}}/api/customers?name=maria&active=true
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -183,17 +266,20 @@ GET {{host}}/api/companies/{{companyA}}/customers?name=maria&active=true
 %}
 
 ### 2.6 Get customer (200)
-GET {{host}}/api/companies/{{companyA}}/customers/{{customerA}}
+GET {{host}}/api/customers/{{customerA}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
 
-### 2.7 Get customer of A through company B (404, isolation)
-GET {{host}}/api/companies/{{companyB}}/customers/{{customerA}}
+### 2.7 Get customer of A with the token of B (404, isolation)
+GET {{host}}/api/customers/{{customerA}}
+Authorization: Bearer {{tokenB}}
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
 ### 2.8 Update customer (200)
-PUT {{host}}/api/companies/{{companyA}}/customers/{{customerA}}
+PUT {{host}}/api/customers/{{customerA}}
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -209,12 +295,14 @@ Content-Type: application/json
 %}
 
 ### 2.9 Deactivate customer (204)
-DELETE {{host}}/api/companies/{{companyA}}/customers/{{customerA}}
+DELETE {{host}}/api/customers/{{customerA}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
 
 ### 2.10 List inactive customers (200)
-GET {{host}}/api/companies/{{companyA}}/customers?active=false
+GET {{host}}/api/customers?active=false
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("1 inactive customer", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
@@ -226,7 +314,8 @@ GET {{host}}/api/companies/{{companyA}}/customers?active=false
 ################################################################
 
 ### 3.1 Create supplier with CNPJ in A (201)
-POST {{host}}/api/companies/{{companyA}}/suppliers
+POST {{host}}/api/suppliers
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -242,7 +331,8 @@ Content-Type: application/json
 %}
 
 ### 3.2 Create supplier with alphanumeric CNPJ (201)
-POST {{host}}/api/companies/{{companyA}}/suppliers
+POST {{host}}/api/suppliers
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -258,7 +348,8 @@ Content-Type: application/json
 %}
 
 ### 3.3 Duplicate document (409)
-POST {{host}}/api/companies/{{companyA}}/suppliers
+POST {{host}}/api/suppliers
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -271,20 +362,23 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 3.4 List suppliers (200)
-GET {{host}}/api/companies/{{companyA}}/suppliers?name=moinho
+GET {{host}}/api/suppliers?name=moinho
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
     client.test("1 supplier", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
 %}
 
-### 3.5 Get supplier of A through company B (404, isolation)
-GET {{host}}/api/companies/{{companyB}}/suppliers/{{supplierA}}
+### 3.5 Get supplier of A with the token of B (404, isolation)
+GET {{host}}/api/suppliers/{{supplierA}}
+Authorization: Bearer {{tokenB}}
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
 ### 3.6 Update supplier (200)
-PUT {{host}}/api/companies/{{companyA}}/suppliers/{{supplierA}}
+PUT {{host}}/api/suppliers/{{supplierA}}
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -297,7 +391,8 @@ Content-Type: application/json
 > {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
 
 ### 3.7 Deactivate supplier (204)
-DELETE {{host}}/api/companies/{{companyA}}/suppliers/{{supplierA}}
+DELETE {{host}}/api/suppliers/{{supplierA}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
 
@@ -307,7 +402,8 @@ DELETE {{host}}/api/companies/{{companyA}}/suppliers/{{supplierA}}
 ################################################################
 
 ### 4.1 Create rice, KG with minimum stock (201)
-POST {{host}}/api/companies/{{companyA}}/products
+POST {{host}}/api/products
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -329,7 +425,8 @@ Content-Type: application/json
 %}
 
 ### 4.2 Create pen, UN without minimum (201)
-POST {{host}}/api/companies/{{companyA}}/products
+POST {{host}}/api/products
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -346,7 +443,8 @@ Content-Type: application/json
 %}
 
 ### 4.3 Duplicate SKU, different case (409)
-POST {{host}}/api/companies/{{companyA}}/products
+POST {{host}}/api/products
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -359,7 +457,8 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 4.4 Same SKU in company B (201)
-POST {{host}}/api/companies/{{companyB}}/products
+POST {{host}}/api/products
+Authorization: Bearer {{tokenB}}
 Content-Type: application/json
 
 {
@@ -375,7 +474,8 @@ Content-Type: application/json
 %}
 
 ### 4.5 Several validation errors (400)
-POST {{host}}/api/companies/{{companyA}}/products
+POST {{host}}/api/products
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -388,7 +488,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 4.6 Unknown unit (400)
-POST {{host}}/api/companies/{{companyA}}/products
+POST {{host}}/api/products
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -401,7 +502,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 4.7 List with low stock filter (200)
-GET {{host}}/api/companies/{{companyA}}/products?lowStock=true
+GET {{host}}/api/products?lowStock=true
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -409,22 +511,26 @@ GET {{host}}/api/companies/{{companyA}}/products?lowStock=true
 %}
 
 ### 4.8 List filtering by SKU, uppercase input (200)
-GET {{host}}/api/companies/{{companyA}}/products?sku=ARR&active=true
+GET {{host}}/api/products?sku=ARR&active=true
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("1 product", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
 
 ### 4.9 List with invalid sort (400)
-GET {{host}}/api/companies/{{companyA}}/products?sort=foo
+GET {{host}}/api/products?sort=foo
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 4.10 Get product (200)
-GET {{host}}/api/companies/{{companyA}}/products/{{productRice}}
+GET {{host}}/api/products/{{productRice}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
 
-### 4.11 Get product of A through company B (404, isolation)
-GET {{host}}/api/companies/{{companyB}}/products/{{productRice}}
+### 4.11 Get product of A with the token of B (404, isolation)
+GET {{host}}/api/products/{{productRice}}
+Authorization: Bearer {{tokenB}}
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
@@ -434,7 +540,8 @@ GET {{host}}/api/companies/{{companyB}}/products/{{productRice}}
 ################################################################
 
 ### 5.1 Entry of 20 (201)
-POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -450,7 +557,8 @@ Content-Type: application/json
 %}
 
 ### 5.2 Fractional exit of 17.5 (201)
-POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -466,7 +574,8 @@ Content-Type: application/json
 %}
 
 ### 5.3 Exit larger than balance (409)
-POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -477,7 +586,8 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 5.4 Adjustment without reason (400)
-POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -488,7 +598,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 5.5 Adjustment to a counted balance of 4 (201)
-POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -504,7 +615,8 @@ Content-Type: application/json
 %}
 
 ### 5.6 Entry with zero quantity (400)
-POST {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -515,7 +627,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 5.7 Fraction on a UN product (400)
-POST {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
+POST {{host}}/api/products/{{productPen}}/stock-movements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -526,7 +639,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 5.8 Whole entry on a UN product (201)
-POST {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
+POST {{host}}/api/products/{{productPen}}/stock-movements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -538,7 +652,8 @@ Content-Type: application/json
 > {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
 
 ### 5.9 History of rice, newest first (200)
-GET {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
+GET {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -547,17 +662,20 @@ GET {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements
 %}
 
 ### 5.10 History filtered by EXIT (200)
-GET {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements?movementType=EXIT
+GET {{host}}/api/products/{{productRice}}/stock-movements?movementType=EXIT
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("1 exit", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
 
 ### 5.11 History with invalid sort (400)
-GET {{host}}/api/companies/{{companyA}}/products/{{productRice}}/stock-movements?sort=foo
+GET {{host}}/api/products/{{productRice}}/stock-movements?sort=foo
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
-### 5.12 Register through the wrong company (404, isolation)
-POST {{host}}/api/companies/{{companyB}}/products/{{productRice}}/stock-movements
+### 5.12 Register with the token of B on a product of A (404, isolation)
+POST {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenB}}
 Content-Type: application/json
 
 {
@@ -567,13 +685,15 @@ Content-Type: application/json
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
-### 5.13 History through the wrong company (404, isolation)
-GET {{host}}/api/companies/{{companyB}}/products/{{productRice}}/stock-movements
+### 5.13 History with the token of B on a product of A (404, isolation)
+GET {{host}}/api/products/{{productRice}}/stock-movements
+Authorization: Bearer {{tokenB}}
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
 ### 5.14 Update product keeps the stock balance (200)
-PUT {{host}}/api/companies/{{companyA}}/products/{{productRice}}
+PUT {{host}}/api/products/{{productRice}}
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -592,12 +712,14 @@ Content-Type: application/json
 %}
 
 ### 5.15 Deactivate pen (204)
-DELETE {{host}}/api/companies/{{companyA}}/products/{{productPen}}
+DELETE {{host}}/api/products/{{productPen}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
 
 ### 5.16 Movement on an inactive product (409)
-POST {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
+POST {{host}}/api/products/{{productPen}}/stock-movements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -608,7 +730,8 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 5.17 History of an inactive product is still readable (200)
-GET {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
+GET {{host}}/api/products/{{productPen}}/stock-movements
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -620,8 +743,9 @@ GET {{host}}/api/companies/{{companyA}}/products/{{productPen}}/stock-movements
 # 6. DEACTIVATE COMPANY
 ################################################################
 
-### 6.1 Deactivate company B (204)
-DELETE {{host}}/api/companies/{{companyB}}
+### 6.1 Deactivate company B with its own token (204)
+DELETE {{host}}/api/company
+Authorization: Bearer {{tokenB}}
 
 > {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
 
@@ -630,7 +754,8 @@ DELETE {{host}}/api/companies/{{companyB}}
 ################################################################
 
 ### 7.1 Create a customer for the financial tests (201)
-POST {{host}}/api/companies/{{companyA}}/customers
+POST {{host}}/api/customers
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -646,7 +771,8 @@ Content-Type: application/json
 %}
 
 ### 7.2 Create a supplier for the financial tests (201)
-POST {{host}}/api/companies/{{companyA}}/suppliers
+POST {{host}}/api/suppliers
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -662,7 +788,8 @@ Content-Type: application/json
 %}
 
 ### 7.3 Create receivable with customer (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -683,7 +810,8 @@ Content-Type: application/json
 %}
 
 ### 7.4 Create payable with supplier, due in the past (201, overdue)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -701,7 +829,8 @@ Content-Type: application/json
 %}
 
 ### 7.5 Create receivable without partner (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -717,7 +846,8 @@ Content-Type: application/json
 %}
 
 ### 7.6 Receivable with a supplier (400)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -731,7 +861,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 7.7 Payable with a customer (400)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -745,7 +876,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 7.8 Unknown customer (400)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -759,7 +891,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 7.9 Inactive customer (409)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -773,7 +906,8 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 7.10 Invalid amount, empty description and missing due date (400)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -785,7 +919,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 7.11 List all entries (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries
+GET {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -794,7 +929,8 @@ GET {{host}}/api/companies/{{companyA}}/financial-entries
 %}
 
 ### 7.12 List overdue entries (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries?overdue=true
+GET {{host}}/api/financial-entries?overdue=true
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("1 overdue", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
@@ -802,32 +938,38 @@ GET {{host}}/api/companies/{{companyA}}/financial-entries?overdue=true
 %}
 
 ### 7.13 List receivables due in January 2030 (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries?entryType=RECEIVABLE&dueFrom=2030-01-01&dueTo=2030-01-31
+GET {{host}}/api/financial-entries?entryType=RECEIVABLE&dueFrom=2030-01-01&dueTo=2030-01-31
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("1 entry", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
 
 ### 7.14 dueFrom after dueTo (400)
-GET {{host}}/api/companies/{{companyA}}/financial-entries?dueFrom=2030-02-01&dueTo=2030-01-01
+GET {{host}}/api/financial-entries?dueFrom=2030-02-01&dueTo=2030-01-01
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 7.15 Unknown status value (400)
-GET {{host}}/api/companies/{{companyA}}/financial-entries?status=FOO
+GET {{host}}/api/financial-entries?status=FOO
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 7.16 Get entry (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+GET {{host}}/api/financial-entries/{{entryReceivable}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
 
-### 7.17 Get entry of A through company B (404, isolation)
-GET {{host}}/api/companies/{{companyB}}/financial-entries/{{entryReceivable}}
+### 7.17 Get entry of A with the token of B (404, isolation)
+GET {{host}}/api/financial-entries/{{entryReceivable}}
+Authorization: Bearer {{tokenB}}
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
 ### 7.18 Update payable amount (200)
-PUT {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}
+PUT {{host}}/api/financial-entries/{{entryPayable}}
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -845,7 +987,8 @@ Content-Type: application/json
 %}
 
 ### 7.19 Try to change the entry type (400)
-PUT {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}
+PUT {{host}}/api/financial-entries/{{entryPayable}}
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -858,17 +1001,20 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 7.20 Cancel entry (204)
-DELETE {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}
+DELETE {{host}}/api/financial-entries/{{entryNoPartner}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
 
 ### 7.21 Cancel again, no effect (204)
-DELETE {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}
+DELETE {{host}}/api/financial-entries/{{entryNoPartner}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
 
 ### 7.22 Canceled entry is kept and marked CANCELED (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}
+GET {{host}}/api/financial-entries/{{entryNoPartner}}
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -877,7 +1023,8 @@ GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}
 %}
 
 ### 7.23 Update a canceled entry (409)
-PUT {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}
+PUT {{host}}/api/financial-entries/{{entryNoPartner}}
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -890,7 +1037,8 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 7.24 List canceled entries (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries?status=CANCELED
+GET {{host}}/api/financial-entries?status=CANCELED
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("1 canceled", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
 
@@ -899,7 +1047,8 @@ GET {{host}}/api/companies/{{companyA}}/financial-entries?status=CANCELED
 ################################################################
 
 ### 8.1 Partial settlement of 50 on the receivable, PIX (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+POST {{host}}/api/financial-entries/{{entryReceivable}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -916,7 +1065,8 @@ Content-Type: application/json
 %}
 
 ### 8.2 Entry is now PARTIALLY_SETTLED (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+GET {{host}}/api/financial-entries/{{entryReceivable}}
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("PARTIALLY_SETTLED", function () { client.assert(response.body.status === "PARTIALLY_SETTLED", "got " + response.body.status); });
@@ -925,7 +1075,8 @@ GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
 %}
 
 ### 8.3 Edit a partially settled entry (409)
-PUT {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+PUT {{host}}/api/financial-entries/{{entryReceivable}}
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -939,12 +1090,14 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 8.4 Cancel a partially settled entry (409)
-DELETE {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+DELETE {{host}}/api/financial-entries/{{entryReceivable}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 8.5 Settle more than the remaining balance (409)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+POST {{host}}/api/financial-entries/{{entryReceivable}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -955,7 +1108,8 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 8.6 Settle the remaining 100 with a past date, CASH (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+POST {{host}}/api/financial-entries/{{entryReceivable}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -970,7 +1124,8 @@ Content-Type: application/json
 %}
 
 ### 8.7 Entry is now SETTLED (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
+GET {{host}}/api/financial-entries/{{entryReceivable}}
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("SETTLED", function () { client.assert(response.body.status === "SETTLED", "got " + response.body.status); });
@@ -979,7 +1134,8 @@ GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}
 %}
 
 ### 8.8 Settle an already settled entry (409)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+POST {{host}}/api/financial-entries/{{entryReceivable}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -990,7 +1146,8 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 8.9 Settle a canceled entry (409)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryNoPartner}}/settlements
+POST {{host}}/api/financial-entries/{{entryNoPartner}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1001,7 +1158,8 @@ Content-Type: application/json
 > {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
 
 ### 8.10 Future settlement date (400)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}/settlements
+POST {{host}}/api/financial-entries/{{entryPayable}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1013,7 +1171,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 8.11 Zero amount and missing payment method (400)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}/settlements
+POST {{host}}/api/financial-entries/{{entryPayable}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1023,7 +1182,8 @@ Content-Type: application/json
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 8.12 Partial settlement of 300 on the overdue payable (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}/settlements
+POST {{host}}/api/financial-entries/{{entryPayable}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1035,7 +1195,8 @@ Content-Type: application/json
 > {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
 
 ### 8.13 Partially settled payable is still overdue (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}
+GET {{host}}/api/financial-entries/{{entryPayable}}
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("PARTIALLY_SETTLED", function () { client.assert(response.body.status === "PARTIALLY_SETTLED"); });
@@ -1044,7 +1205,8 @@ GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryPayable}}
 %}
 
 ### 8.14 History of the receivable, newest settlement date first (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements
+GET {{host}}/api/financial-entries/{{entryReceivable}}/settlements
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -1053,12 +1215,14 @@ GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/se
 %}
 
 ### 8.15 History filtered by CASH (200)
-GET {{host}}/api/companies/{{companyA}}/financial-entries/{{entryReceivable}}/settlements?paymentMethod=CASH
+GET {{host}}/api/financial-entries/{{entryReceivable}}/settlements?paymentMethod=CASH
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("1 cash settlement", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
 
-### 8.16 Settle through the wrong company (404, isolation)
-POST {{host}}/api/companies/{{companyB}}/financial-entries/{{entryPayable}}/settlements
+### 8.16 Settle with the token of B on an entry of A (404, isolation)
+POST {{host}}/api/financial-entries/{{entryPayable}}/settlements
+Authorization: Bearer {{tokenB}}
 Content-Type: application/json
 
 {
@@ -1068,8 +1232,9 @@ Content-Type: application/json
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
-### 8.17 History through the wrong company (404, isolation)
-GET {{host}}/api/companies/{{companyB}}/financial-entries/{{entryPayable}}/settlements
+### 8.17 History with the token of B on an entry of A (404, isolation)
+GET {{host}}/api/financial-entries/{{entryPayable}}/settlements
+Authorization: Bearer {{tokenB}}
 
 > {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
@@ -1078,7 +1243,8 @@ GET {{host}}/api/companies/{{companyB}}/financial-entries/{{entryPayable}}/settl
 # ---------------------------------------------------------------
 
 ### 9.1 R1: receivable 500, due 2031-03-02 (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1094,7 +1260,8 @@ Content-Type: application/json
 %}
 
 ### 9.2 R2: receivable 300, due 2031-03-04 (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1110,7 +1277,8 @@ Content-Type: application/json
 %}
 
 ### 9.3 R3: receivable 80, due 2031-03-02, never settled (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1123,7 +1291,8 @@ Content-Type: application/json
 > {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
 
 ### 9.4 P1: payable 400, due 2031-03-02 (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1139,7 +1308,8 @@ Content-Type: application/json
 %}
 
 ### 9.5 P2: payable 120, due 2031-03-05, never settled (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1152,7 +1322,8 @@ Content-Type: application/json
 > {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
 
 ### 9.6 C1: payable 999, due 2031-03-03, to be canceled (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries
+POST {{host}}/api/financial-entries
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1168,12 +1339,14 @@ Content-Type: application/json
 %}
 
 ### 9.7 Cancel C1 (204)
-DELETE {{host}}/api/companies/{{companyA}}/financial-entries/{{cfC1}}
+DELETE {{host}}/api/financial-entries/{{cfC1}}
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
 
 ### 9.8 R1: 200 received by PIX on 2025-03-02 (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{cfR1}}/settlements
+POST {{host}}/api/financial-entries/{{cfR1}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1185,7 +1358,8 @@ Content-Type: application/json
 > {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
 
 ### 9.9 R1: 100 received in CASH on 2025-03-02 (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{cfR1}}/settlements
+POST {{host}}/api/financial-entries/{{cfR1}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1197,7 +1371,8 @@ Content-Type: application/json
 > {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
 
 ### 9.10 R2: 300 received by PIX on 2025-03-04, fully settled (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{cfR2}}/settlements
+POST {{host}}/api/financial-entries/{{cfR2}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1209,7 +1384,8 @@ Content-Type: application/json
 > {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
 
 ### 9.11 P1: 150 paid by bank transfer on 2025-03-03 (201)
-POST {{host}}/api/companies/{{companyA}}/financial-entries/{{cfP1}}/settlements
+POST {{host}}/api/financial-entries/{{cfP1}}/settlements
+Authorization: Bearer {{tokenA}}
 Content-Type: application/json
 
 {
@@ -1221,7 +1397,8 @@ Content-Type: application/json
 > {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
 
 ### 9.12 Realized cash flow, 2025-03-01 to 2025-03-05 (200)
-GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-03-01&to=2025-03-05
+GET {{host}}/api/cash-flow/realized?from=2025-03-01&to=2025-03-05
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -1259,7 +1436,8 @@ GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-03-01&to=20
 %}
 
 ### 9.13 Forecast cash flow, 2031-03-01 to 2031-03-07 (200)
-GET {{host}}/api/companies/{{companyA}}/cash-flow/forecast?from=2031-03-01&to=2031-03-07
+GET {{host}}/api/cash-flow/forecast?from=2031-03-01&to=2031-03-07
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -1283,7 +1461,8 @@ GET {{host}}/api/companies/{{companyA}}/cash-flow/forecast?from=2031-03-01&to=20
 %}
 
 ### 9.14 Single-day period (200)
-GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-03-02&to=2025-03-02
+GET {{host}}/api/cash-flow/realized?from=2025-03-02&to=2025-03-02
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("1 day", function () { client.assert(response.body.days.length === 1, "got " + response.body.days.length); });
@@ -1291,7 +1470,8 @@ GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-03-02&to=20
 %}
 
 ### 9.15 Longest allowed period, 366 days (200)
-GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-01-01&to=2026-01-01
+GET {{host}}/api/cash-flow/realized?from=2025-01-01&to=2026-01-01
+Authorization: Bearer {{tokenA}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -1299,27 +1479,32 @@ GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-01-01&to=20
 %}
 
 ### 9.16 Period of 367 days (400)
-GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-01-01&to=2026-01-02
+GET {{host}}/api/cash-flow/realized?from=2025-01-01&to=2026-01-02
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 9.17 'from' after 'to' (400)
-GET {{host}}/api/companies/{{companyA}}/cash-flow/forecast?from=2031-03-07&to=2031-03-01
+GET {{host}}/api/cash-flow/forecast?from=2031-03-07&to=2031-03-01
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 9.18 Missing 'to' (400)
-GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=2025-03-01
+GET {{host}}/api/cash-flow/realized?from=2025-03-01
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
 ### 9.19 Malformed date (400)
-GET {{host}}/api/companies/{{companyA}}/cash-flow/realized?from=01/03/2025&to=2025-03-05
+GET {{host}}/api/cash-flow/realized?from=01/03/2025&to=2025-03-05
+Authorization: Bearer {{tokenA}}
 
 > {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
 
-### 9.20 Another company sees none of this data (200, isolation)
-GET {{host}}/api/companies/{{companyB}}/cash-flow/realized?from=2025-03-01&to=2025-03-05
+### 9.20 Company B sees none of this data (200, isolation)
+GET {{host}}/api/cash-flow/realized?from=2025-03-01&to=2025-03-05
+Authorization: Bearer {{tokenB}}
 
 > {%
     client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
@@ -1329,15 +1514,11 @@ GET {{host}}/api/companies/{{companyB}}/cash-flow/realized?from=2025-03-01&to=20
     });
 %}
 
-### 9.21 Another company sees none of the forecast (200, isolation)
-GET {{host}}/api/companies/{{companyB}}/cash-flow/forecast?from=2031-03-01&to=2031-03-07
+### 9.21 Company B sees none of the forecast (200, isolation)
+GET {{host}}/api/cash-flow/forecast?from=2031-03-01&to=2031-03-07
+Authorization: Bearer {{tokenB}}
 
 > {% client.test("all zero", function () { client.assert(response.body.totalInflow === 0 && response.body.totalOutflow === 0); }); %}
-
-### 9.22 Unknown company (404)
-GET {{host}}/api/companies/00000000-0000-0000-0000-000000000000/cash-flow/realized?from=2025-03-01&to=2025-03-05
-
-> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
 
 # ---------------------------------------------------------------
 # 10. AUTHENTICATION
@@ -1527,10 +1708,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.invalidsignature
 
 > {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
 
-### 10.13 Rest of the API is still open in this part (200)
+### 10.13 The API is locked: unmapped path without token (401)
 GET {{host}}/api/companies?page=0&size=1
 
-> {% client.test("200 OK (temporary, locked in 7.3)", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
 
 ### 10.14 Register a third company to test inactive companies (201)
 POST {{host}}/api/auth/register
@@ -1552,10 +1733,13 @@ Content-Type: application/json
 > {%
     client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
     client.global.set("inactiveCompanyId", response.body.user.companyId);
+    client.global.set("inactiveToken", response.body.accessToken);
+    client.global.set("inactiveRefresh", response.body.refreshToken);
 %}
 
-### 10.15 Deactivate that company (204)
-DELETE {{host}}/api/companies/{{inactiveCompanyId}}
+### 10.15 Deactivate that company with its own token (204)
+DELETE {{host}}/api/company
+Authorization: Bearer {{inactiveToken}}
 
 > {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
 
@@ -1566,6 +1750,16 @@ Content-Type: application/json
 {
   "email": "inactive@authtest.com",
   "password": "Sup3r-secret"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 10.17 Refresh token of an inactive company is refused (401)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{inactiveRefresh}}"
 }
 
 > {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
@@ -1735,3 +1929,97 @@ Content-Type: application/json
     client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
     client.test("refresh token returned", function () { client.assert(response.body.refreshToken && response.body.refreshToken.length >= 40); });
 %}
+
+# ---------------------------------------------------------------
+# 12. API LOCK-DOWN (everything but auth and Swagger requires a token)
+# ---------------------------------------------------------------
+
+### 12.1 Customers without token (401)
+GET {{host}}/api/customers
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 12.2 Suppliers without token (401)
+GET {{host}}/api/suppliers
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 12.3 Products without token (401)
+GET {{host}}/api/products
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 12.4 Stock movements without token (401)
+GET {{host}}/api/products/{{productRice}}/stock-movements
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 12.5 Financial entries without token (401)
+GET {{host}}/api/financial-entries
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 12.6 Settlements without token (401)
+GET {{host}}/api/financial-entries/{{entryReceivable}}/settlements
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 12.7 Cash flow without token (401)
+GET {{host}}/api/cash-flow/realized?from=2025-03-01&to=2025-03-05
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 12.8 Create customer without token (401)
+POST {{host}}/api/customers
+Content-Type: application/json
+
+{
+  "name": "No Token",
+  "document": "529.982.247-25",
+  "email": "notoken@email.com",
+  "phone": "11999990000"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 12.9 Forged token on customers (401)
+GET {{host}}/api/customers
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.invalidsignature
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 12.10 Customers with a valid token (200)
+GET {{host}}/api/customers
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("paginated envelope", function () { client.assert(Array.isArray(response.body.data) && response.body.page !== undefined); });
+%}
+
+### 12.11 Old nested URL no longer exists (404)
+GET {{host}}/api/companies/{{companyA}}/customers
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 12.12 Swagger no longer exposes companyId on operational endpoints (200)
+GET {{host}}/v3/api-docs
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("flat URLs, no companyId parameter", function () {
+        var paths = Object.keys(response.body.paths);
+        client.assert(paths.indexOf("/api/customers") >= 0, "missing /api/customers");
+        client.assert(paths.indexOf("/api/cash-flow/realized") >= 0, "missing /api/cash-flow/realized");
+        var nested = paths.filter(function (p) { return p.indexOf("{companyId}") >= 0; });
+        client.assert(nested.length === 0, "still nested: " + nested.join(", "));
+        var names = (response.body.paths["/api/customers"].get.parameters || []).map(function (p) { return p.name; });
+        client.assert(names.indexOf("companyId") === -1, "companyId still listed as a parameter");
+    });
+%}
+
+### 12.13 Any other path without token is 401, not open (401)
+GET {{host}}/api/anything-else
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}

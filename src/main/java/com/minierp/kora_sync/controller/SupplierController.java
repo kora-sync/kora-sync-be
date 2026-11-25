@@ -3,6 +3,7 @@ package com.minierp.kora_sync.controller;
 import com.minierp.kora_sync.dto.PageResponse;
 import com.minierp.kora_sync.dto.SupplierRequest;
 import com.minierp.kora_sync.dto.SupplierResponse;
+import com.minierp.kora_sync.security.CurrentCompany;
 import com.minierp.kora_sync.service.SupplierService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/companies/{companyId}/suppliers")
+@RequestMapping("/api/suppliers")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 @Tag(name = "Suppliers", description = "Register and manage the suppliers of a company")
 public class SupplierController {
@@ -53,8 +56,7 @@ public class SupplierController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public SupplierResponse create(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Valid @RequestBody SupplierRequest request) {
         return supplierService.create(companyId, request);
     }
@@ -72,8 +74,7 @@ public class SupplierController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public PageResponse<SupplierResponse> list(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Case-insensitive partial match on the supplier name", example = "pão")
             @RequestParam(required = false) String name,
             @Parameter(description = "Filter by active flag. Omit to return both active and inactive suppliers",
@@ -95,8 +96,7 @@ public class SupplierController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public SupplierResponse getById(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Supplier identifier", example = "9b2f4c1e-3a7d-4f60-8e55-2d1c7a9b6f03")
             @PathVariable UUID id) {
         return supplierService.findGetById(companyId, id);
@@ -116,8 +116,7 @@ public class SupplierController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public SupplierResponse update(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Supplier identifier", example = "9b2f4c1e-3a7d-4f60-8e55-2d1c7a9b6f03")
             @PathVariable UUID id,
             @Valid @RequestBody SupplierRequest request) {
@@ -136,8 +135,7 @@ public class SupplierController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public void deactivate(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Supplier identifier", example = "9b2f4c1e-3a7d-4f60-8e55-2d1c7a9b6f03")
             @PathVariable UUID id) {
         supplierService.deactivate(companyId, id);

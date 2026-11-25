@@ -6,6 +6,7 @@ import com.minierp.kora_sync.dto.FinancialEntryResponse;
 import com.minierp.kora_sync.dto.PageResponse;
 import com.minierp.kora_sync.enums.EntryStatus;
 import com.minierp.kora_sync.enums.EntryType;
+import com.minierp.kora_sync.security.CurrentCompany;
 import com.minierp.kora_sync.service.FinancialEntryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -13,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +39,8 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/companies/{companyId}/financial-entries")
+@RequestMapping("/api/financial-entries")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 @Tag(name = "Financial Entries",
         description = "Register and follow the amounts a company will receive (receivables) or pay (payables)")
@@ -60,8 +63,7 @@ public class FinancialEntryController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public FinancialEntryResponse create(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Valid @RequestBody FinancialEntryRequest request) {
         return financialEntryService.create(companyId, request);
     }
@@ -79,8 +81,7 @@ public class FinancialEntryController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public PageResponse<FinancialEntryResponse> list(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Only receivables or only payables", example = "RECEIVABLE")
             @RequestParam(required = false) EntryType entryType,
             @Parameter(description = "Only entries in this status", example = "OPEN")
@@ -116,8 +117,7 @@ public class FinancialEntryController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public FinancialEntryResponse getById(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Entry identifier", example = "e2a4c6d8-1f3b-4957-8c0e-6b8d0a2f4e91")
             @PathVariable UUID id) {
         return financialEntryService.findGetById(companyId, id);
@@ -138,8 +138,7 @@ public class FinancialEntryController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public FinancialEntryResponse update(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Entry identifier", example = "e2a4c6d8-1f3b-4957-8c0e-6b8d0a2f4e91")
             @PathVariable UUID id,
             @Valid @RequestBody FinancialEntryRequest request) {
@@ -160,8 +159,7 @@ public class FinancialEntryController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public void cancel(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Entry identifier", example = "e2a4c6d8-1f3b-4957-8c0e-6b8d0a2f4e91")
             @PathVariable UUID id) {
         financialEntryService.cancel(companyId, id);

@@ -4,6 +4,7 @@ import com.minierp.kora_sync.dto.PageResponse;
 import com.minierp.kora_sync.dto.StockMovementRequest;
 import com.minierp.kora_sync.dto.StockMovementResponse;
 import com.minierp.kora_sync.enums.MovementType;
+import com.minierp.kora_sync.security.CurrentCompany;
 import com.minierp.kora_sync.service.StockMovementService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -11,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/companies/{companyId}/products/{productId}/stock-movements")
+@RequestMapping("/api/products/{productId}/stock-movements")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 @Tag(name = "Stock Movements",
         description = "Register stock entries, exits and inventory adjustments and see the history of a product")
@@ -58,8 +61,7 @@ public class StockMovementController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public StockMovementResponse register(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Product identifier", example = "4e8b7d1a-6c2f-4a39-b5d0-91f3a7c2e864")
             @PathVariable UUID productId,
             @Valid @RequestBody StockMovementRequest request) {
@@ -79,8 +81,7 @@ public class StockMovementController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public PageResponse<StockMovementResponse> findAll(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Product identifier", example = "4e8b7d1a-6c2f-4a39-b5d0-91f3a7c2e864")
             @PathVariable UUID productId,
             @Parameter(description = "Return only movements of this kind. Omit to return all kinds",

@@ -4,6 +4,7 @@ import com.minierp.kora_sync.dto.PageResponse;
 import com.minierp.kora_sync.dto.SettlementRequest;
 import com.minierp.kora_sync.dto.SettlementResponse;
 import com.minierp.kora_sync.enums.PaymentMethod;
+import com.minierp.kora_sync.security.CurrentCompany;
 import com.minierp.kora_sync.service.SettlementService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -11,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/companies/{companyId}/financial-entries/{entryId}/settlements")
+@RequestMapping("/api/financial-entries/{entryId}/settlements")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 @Tag(name = "Settlements",
         description = "Settle (pay or receive) financial entries, in part or in full, and see the history")
@@ -57,8 +60,7 @@ public class SettlementController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public SettlementResponse register(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Financial entry identifier", example = "e2a4c6d8-1f3b-4957-8c0e-6b8d0a2f4e91")
             @PathVariable UUID entryId,
             @Valid @RequestBody SettlementRequest request) {
@@ -78,8 +80,7 @@ public class SettlementController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public PageResponse<SettlementResponse> list(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Financial entry identifier", example = "e2a4c6d8-1f3b-4957-8c0e-6b8d0a2f4e91")
             @PathVariable UUID entryId,
             @Parameter(description = "Return only settlements paid this way. Omit to return all", example = "PIX")

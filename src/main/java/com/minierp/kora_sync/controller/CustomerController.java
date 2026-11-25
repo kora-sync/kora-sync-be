@@ -3,6 +3,7 @@ package com.minierp.kora_sync.controller;
 import com.minierp.kora_sync.dto.CustomerRequest;
 import com.minierp.kora_sync.dto.CustomerResponse;
 import com.minierp.kora_sync.dto.PageResponse;
+import com.minierp.kora_sync.security.CurrentCompany;
 import com.minierp.kora_sync.service.CustomerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/companies/{companyId}/customers")
+@RequestMapping("/api/customers")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 @Tag(name = "Customers", description = "Register and manage the customers of a company")
 
@@ -54,8 +57,7 @@ public class CustomerController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public CustomerResponse create(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Valid @RequestBody CustomerRequest request) {
         return customerService.create(companyId, request);
     }
@@ -73,8 +75,7 @@ public class CustomerController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public PageResponse<CustomerResponse> findAll(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Case-insensitive partial match on the customer name", example = "maria")
             @RequestParam(required = false) String name,
             @Parameter(description = "Filter by active flag. Omit to return both active and inactive customers",
@@ -96,8 +97,7 @@ public class CustomerController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public CustomerResponse findGetById(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Customer identifier", example = "7c9e6679-7425-40de-944b-e07fc1f90ae7")
             @PathVariable UUID id) {
         return customerService.findGetById(companyId, id);
@@ -117,8 +117,7 @@ public class CustomerController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public CustomerResponse update(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Customer identifier", example = "7c9e6679-7425-40de-944b-e07fc1f90ae7")
             @PathVariable UUID id,
             @Valid @RequestBody CustomerRequest request) {
@@ -137,8 +136,7 @@ public class CustomerController {
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
     })
     public void deactivate(
-            @Parameter(description = "Company identifier", example = "cfbf7095-6ec9-40da-9fac-8570b746de4d")
-            @PathVariable UUID companyId,
+            @CurrentCompany UUID companyId,
             @Parameter(description = "Customer identifier", example = "7c9e6679-7425-40de-944b-e07fc1f90ae7")
             @PathVariable UUID id) {
         customerService.deactivate(companyId, id);

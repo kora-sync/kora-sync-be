@@ -17,6 +17,7 @@ public class TabularWriters {
     public TabularWriter open(ExportFormat format, OutputStream out) throws IOException {
         return switch (format) {
             case CSV -> new CsvTabularWriter(out, clock.getZone());
+            case XLSX -> new XlsxTabularWriter(out, clock.getZone());
         };
     }
 }

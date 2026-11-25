@@ -2023,3 +2023,454 @@ GET {{host}}/v3/api-docs
 GET {{host}}/api/anything-else
 
 > {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+# ---------------------------------------------------------------
+# 13. USERS (administrators only)
+# ---------------------------------------------------------------
+
+### 13.0 Who is the administrator of tenant A (200)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("adminAId", response.body.id);
+%}
+
+### 13.1 Create a MANAGER (201)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "  Marta Gerente  ",
+  "email": "Marta@TenantA.com",
+  "password": "Sup3r-secret",
+  "role": "MANAGER"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.test("normalized and scoped to tenant A", function () {
+        client.assert(response.body.name === "Marta Gerente", "got " + response.body.name);
+        client.assert(response.body.email === "marta@tenanta.com", "got " + response.body.email);
+        client.assert(response.body.role === "MANAGER");
+        client.assert(response.body.active === true);
+        client.assert(response.body.companyId === client.global.get("companyA"));
+    });
+    client.test("password never returned", function () {
+        client.assert(response.body.password === undefined && response.body.passwordHash === undefined);
+    });
+    client.global.set("managerId", response.body.id);
+%}
+
+### 13.2 Create an OPERATOR (201)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Otavio Operador",
+  "email": "otavio@tenanta.com",
+  "password": "Sup3r-secret",
+  "role": "OPERATOR"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("operatorId", response.body.id);
+%}
+
+### 13.3 Same e-mail in another case (409)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Marta Duplicada",
+  "email": "MARTA@tenanta.com",
+  "password": "Sup3r-secret",
+  "role": "OPERATOR"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 13.4 E-mail already used by another company (409)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Intruder",
+  "email": "admin@tenantb.com",
+  "password": "Sup3r-secret",
+  "role": "OPERATOR"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 13.5 Short password, invalid e-mail (400)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Bad User",
+  "email": "not-an-email",
+  "password": "short",
+  "role": "OPERATOR"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 13.6 Unknown role (400)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Bad Role",
+  "email": "badrole@tenanta.com",
+  "password": "Sup3r-secret",
+  "role": "SUPERUSER"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 13.7 Password longer than 72 bytes (400)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Long Password",
+  "email": "longpass@tenanta.com",
+  "password": "ççççççççççççççççççççççççççççççççççççççç",
+  "role": "OPERATOR"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 13.8 The manager signs in (200)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "marta@tenanta.com",
+  "password": "Sup3r-secret"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("role MANAGER in the user", function () { client.assert(response.body.user.role === "MANAGER"); });
+    client.global.set("managerToken", response.body.accessToken);
+%}
+
+### 13.9 The operator signs in (200)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "otavio@tenanta.com",
+  "password": "Sup3r-secret"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("operatorToken", response.body.accessToken);
+    client.global.set("operatorRefresh", response.body.refreshToken);
+%}
+
+### 13.10 Users without token (401)
+GET {{host}}/api/users
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 13.11 A manager cannot list users (403)
+GET {{host}}/api/users
+Authorization: Bearer {{managerToken}}
+
+> {%
+    client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); });
+    client.test("ProblemDetail body", function () { client.assert(response.body.title === "Access denied", "got " + JSON.stringify(response.body)); });
+%}
+
+### 13.12 An operator cannot create users (403)
+POST {{host}}/api/users
+Authorization: Bearer {{operatorToken}}
+Content-Type: application/json
+
+{
+  "name": "Sneaky",
+  "email": "sneaky@tenanta.com",
+  "password": "Sup3r-secret",
+  "role": "ADMIN"
+}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 13.13 The administrator lists the users of tenant A (200)
+GET {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("3 users, sorted by name", function () {
+        client.assert(response.body.page.totalElements === 3, "got " + response.body.page.totalElements);
+        client.assert(response.body.data[0].name === "Admin A", "got " + response.body.data[0].name);
+    });
+%}
+
+### 13.14 Filter by role (200)
+GET {{host}}/api/users?role=OPERATOR
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("1 operator", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
+
+### 13.15 Filter by name, case-insensitive (200)
+GET {{host}}/api/users?name=MARTA&active=true
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("1 user", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); }); %}
+
+### 13.16 Invalid sort (400)
+GET {{host}}/api/users?sort=foo
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 13.17 Tenant B sees only its own users (200, isolation)
+GET {{host}}/api/users
+Authorization: Bearer {{tokenB}}
+
+> {%
+    client.test("only the administrator of B", function () {
+        client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements);
+        client.assert(response.body.data[0].email === "admin@tenantb.com");
+    });
+%}
+
+### 13.18 Get a user (200)
+GET {{host}}/api/users/{{managerId}}
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("the manager", function () { client.assert(response.body.email === "marta@tenanta.com"); });
+%}
+
+### 13.19 Get a user of tenant A with the token of B (404, isolation)
+GET {{host}}/api/users/{{managerId}}
+Authorization: Bearer {{tokenB}}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 13.20 Update the manager's name (200)
+PUT {{host}}/api/users/{{managerId}}
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Marta Souza",
+  "role": "MANAGER"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("name updated, e-mail unchanged", function () {
+        client.assert(response.body.name === "Marta Souza");
+        client.assert(response.body.email === "marta@tenanta.com");
+    });
+%}
+
+### 13.21 Create a temporary user and promote it (201)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Temp User",
+  "email": "temp@tenanta.com",
+  "password": "Sup3r-secret",
+  "role": "OPERATOR"
+}
+
+> {%
+    client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); });
+    client.global.set("tempId", response.body.id);
+%}
+
+### 13.22 Promote the temporary user to MANAGER (200)
+PUT {{host}}/api/users/{{tempId}}
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Temp User",
+  "role": "MANAGER"
+}
+
+> {% client.test("role changed", function () { client.assert(response.status === 200 && response.body.role === "MANAGER", "got " + response.status); }); %}
+
+### 13.23 Unknown user (404)
+PUT {{host}}/api/users/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Ghost",
+  "role": "OPERATOR"
+}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 13.24 The only administrator cannot be demoted (409)
+PUT {{host}}/api/users/{{adminAId}}
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Admin A",
+  "role": "MANAGER"
+}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 13.25 The only administrator cannot be deactivated (409)
+DELETE {{host}}/api/users/{{adminAId}}
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("409 Conflict", function () { client.assert(response.status === 409, "got " + response.status); }); %}
+
+### 13.26 Deactivate the temporary user (204)
+DELETE {{host}}/api/users/{{tempId}}
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 13.27 Deactivate the operator (204, revokes its sessions)
+DELETE {{host}}/api/users/{{operatorId}}
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 13.28 Deactivate again, no effect (204)
+DELETE {{host}}/api/users/{{operatorId}}
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 13.29 The deactivated operator cannot sign in (401)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "otavio@tenanta.com",
+  "password": "Sup3r-secret"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 13.30 Its refresh token was revoked (401)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{operatorRefresh}}"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 13.31 List inactive users (200)
+GET {{host}}/api/users?active=false
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("2 inactive users", function () { client.assert(response.body.page.totalElements === 2, "got " + response.body.page.totalElements); }); %}
+
+### 13.32 Reactivate the operator (204)
+POST {{host}}/api/users/{{operatorId}}/activate
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 13.33 The reactivated operator signs in again (200)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "otavio@tenanta.com",
+  "password": "Sup3r-secret"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("operatorRefresh", response.body.refreshToken);
+%}
+
+### 13.34 A manager cannot reset a password (403)
+PUT {{host}}/api/users/{{operatorId}}/password
+Authorization: Bearer {{managerToken}}
+Content-Type: application/json
+
+{
+  "password": "N3w-secret-pass"
+}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 13.35 Reset with a short password (400)
+PUT {{host}}/api/users/{{operatorId}}/password
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "password": "short"
+}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 13.36 The administrator resets the operator's password (204)
+PUT {{host}}/api/users/{{operatorId}}/password
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "password": "N3w-secret-pass"
+}
+
+> {% client.test("204 No Content", function () { client.assert(response.status === 204, "got " + response.status); }); %}
+
+### 13.37 Old password no longer works (401)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "otavio@tenanta.com",
+  "password": "Sup3r-secret"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 13.38 The session opened before the reset was revoked (401)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{operatorRefresh}}"
+}
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 13.39 New password works (200)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "otavio@tenanta.com",
+  "password": "N3w-secret-pass"
+}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.global.set("operatorToken", response.body.accessToken);
+%}

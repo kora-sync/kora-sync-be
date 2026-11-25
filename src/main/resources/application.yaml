@@ -1,4 +1,7 @@
 spring:
+  threads:
+    virtual:
+      enabled: true
   application:
     name: kora-sync
   config:
@@ -13,6 +16,9 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+  mvc:
+    async:
+      request-timeout: 10m
 
   data:
     web:
@@ -20,9 +26,6 @@ spring:
         default-page-size: 10
         max-page-size: 100
         one-indexed-parameters: false
-  threads:
-    virtual:
-      enabled: true
 
 app:
   security:

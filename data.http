@@ -3051,3 +3051,150 @@ GET {{host}}/api/auth/me
 Authorization: Bearer {{pwdToken}}
 
 > {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+# ---------------------------------------------------------------
+# 16. EXPORTS (8.1: CSV infrastructure, pilot report = users, ADMIN only)
+# ---------------------------------------------------------------
+
+### 16.1 Export users as CSV (200)
+GET {{host}}/api/reports/users
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("CSV content type", function () { client.assert(response.contentType.mimeType === "text/csv", "got " + response.contentType.mimeType); });
+    client.test("downloads as a named file", function () {
+        var disposition = String(response.headers.valueOf("Content-Disposition"));
+        client.assert(disposition.indexOf("attachment") === 0, disposition);
+        client.assert(disposition.indexOf("users-") > 0 && disposition.indexOf(".csv") > 0, disposition);
+    });
+    client.test("never cached", function () { client.assert(String(response.headers.valueOf("Cache-Control")).indexOf("no-store") >= 0); });
+    client.test("header + 5 users, Excel BR separator", function () {
+        var lines = response.body.split("\r\n").filter(function (l) { return l.length > 0; });
+        client.assert(lines.length === 6, "got " + lines.length);
+        client.assert(lines[0].indexOf("Name;E-mail;Role;Active;Created at") >= 0, lines[0]);
+    });
+    client.test("row content and date format", function () {
+        client.assert(response.body.indexOf("Marta Souza;marta@tenanta.com;MANAGER;Yes;") >= 0);
+        client.assert(/\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/.test(response.body), "no dd/MM/yyyy HH:mm date");
+    });
+    client.test("inactive users are marked", function () { client.assert(response.body.indexOf("temp@tenanta.com;MANAGER;No;") >= 0); });
+%}
+
+### 16.2 Filter by role (200)
+GET {{host}}/api/reports/users?role=MANAGER
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("header + 2 managers", function () {
+        var lines = response.body.split("\r\n").filter(function (l) { return l.length > 0; });
+        client.assert(lines.length === 3, "got " + lines.length);
+    });
+%}
+
+### 16.3 Filter by inactive (200)
+GET {{host}}/api/reports/users?active=false
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("header + 2 inactive users", function () {
+        var lines = response.body.split("\r\n").filter(function (l) { return l.length > 0; });
+        client.assert(lines.length === 3, "got " + lines.length);
+    });
+%}
+
+### 16.4 Filter by name (200)
+GET {{host}}/api/reports/users?name=marta
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("header + 1 user", function () {
+        var lines = response.body.split("\r\n").filter(function (l) { return l.length > 0; });
+        client.assert(lines.length === 2, "got " + lines.length);
+    });
+%}
+
+### 16.5 A manager cannot export users (403)
+GET {{host}}/api/reports/users
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 16.6 An operator cannot export users (403)
+GET {{host}}/api/reports/users
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 16.7 Export without token (401)
+GET {{host}}/api/reports/users
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 16.8 Unknown format (400)
+GET {{host}}/api/reports/users?format=PDF
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("400 Bad Request", function () { client.assert(response.status === 400, "got " + response.status); }); %}
+
+### 16.9 Tenant B exports only its own users (200, isolation)
+GET {{host}}/api/reports/users
+Authorization: Bearer {{tokenB}}
+
+> {%
+    client.test("header + the administrator of B", function () {
+        var lines = response.body.split("\r\n").filter(function (l) { return l.length > 0; });
+        client.assert(lines.length === 2, "got " + lines.length);
+        client.assert(response.body.indexOf("admin@tenantb.com") >= 0);
+        client.assert(response.body.indexOf("tenanta.com") === -1, "leaked data of tenant A");
+    });
+%}
+
+### 16.10 Create a user whose name looks like a spreadsheet formula (201)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "=2+2 Formula",
+  "email": "formula@tenanta.com",
+  "password": "Sup3r-secret",
+  "role": "OPERATOR"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 16.11 Create a user whose name has the separator and quotes (201)
+POST {{host}}/api/users
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "name": "Silva; \"Jr\"",
+  "email": "silva@tenanta.com",
+  "password": "Sup3r-secret",
+  "role": "OPERATOR"
+}
+
+> {% client.test("201 Created", function () { client.assert(response.status === 201, "got " + response.status); }); %}
+
+### 16.12 Formula injection is neutralized in the CSV (200)
+GET {{host}}/api/reports/users?name=formula
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("text starting with = gets a leading apostrophe", function () {
+        client.assert(response.body.indexOf("'=2+2 Formula;") >= 0, response.body);
+        client.assert(response.body.indexOf(";=2+2") === -1);
+    });
+%}
+
+### 16.13 Separator and quotes are escaped as RFC 4180 (200)
+GET {{host}}/api/reports/users?name=silva
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("quoted field with doubled quotes", function () {
+        client.assert(response.body.indexOf('"Silva; ""Jr"""') >= 0, response.body);
+    });
+%}

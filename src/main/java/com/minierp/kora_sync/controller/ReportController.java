@@ -1,10 +1,12 @@
 package com.minierp.kora_sync.controller;
 
+import com.minierp.kora_sync.dto.ProductFilter;
 import com.minierp.kora_sync.enums.ExportFormat;
 import com.minierp.kora_sync.enums.Role;
 import com.minierp.kora_sync.export.ExportResponses;
 import com.minierp.kora_sync.security.CurrentCompany;
 import com.minierp.kora_sync.security.RequiresAdmin;
+import com.minierp.kora_sync.security.RequiresManager;
 import com.minierp.kora_sync.service.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -58,5 +60,33 @@ public class ReportController {
             @RequestParam(required = false) Boolean active) {
         return exportResponses.download("users", format,
                 out -> reportService.exportUsers(companyId, name, role, active, format, out));
+    }
+
+    @GetMapping("/products")
+    @RequiresManager
+    @Operation(
+            summary = "Export stock position",
+            description = "Downloads the products of the company with their stock as a file, with the same "
+                    + "filters as the product list. The file is streamed, so it can be large. Stock value is "
+                    + "cost price times stock quantity.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "The file",
+                    content = @Content(mediaType = "text/csv", schema = @Schema(type = "string", format = "binary")))
+    })
+    public ResponseEntity<StreamingResponseBody> products(
+            @CurrentCompany UUID companyId,
+            @Parameter(description = "File format", example = "CSV")
+            @RequestParam(defaultValue = "CSV") ExportFormat format,
+            @Parameter(description = "Case-insensitive partial match on the product name", example = "pão")
+            @RequestParam(required = false) String name,
+            @Parameter(description = "Partial match on the SKU (case-insensitive)", example = "pao-")
+            @RequestParam(required = false) String sku,
+            @Parameter(description = "Only active (true) or inactive (false) products", example = "true")
+            @RequestParam(required = false) Boolean active,
+            @Parameter(description = "When true, only products at or below their minimum stock", example = "true")
+            @RequestParam(required = false) Boolean lowStock) {
+        ProductFilter filter = new ProductFilter(name, sku, active, lowStock);
+        return exportResponses.download("products", format,
+                out -> reportService.exportProducts(companyId, filter, format, out));
     }
 }

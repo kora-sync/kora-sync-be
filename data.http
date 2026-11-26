@@ -3198,3 +3198,270 @@ Authorization: Bearer {{tokenA}}
         client.assert(response.body.indexOf('"Silva; ""Jr"""') >= 0, response.body);
     });
 %}
+
+# ---------------------------------------------------------------
+# 17. EXPORTS (8.2: Excel / XLSX)
+# The .http client cannot open a binary file, so the content is checked in the terminal (see the guide).
+# ---------------------------------------------------------------
+
+### 17.1 Export users as XLSX (200)
+GET {{host}}/api/reports/users?format=XLSX
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("XLSX content type", function () {
+        client.assert(response.contentType.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "got " + response.contentType.mimeType);
+    });
+    client.test("downloads as a named .xlsx file", function () {
+        var disposition = String(response.headers.valueOf("Content-Disposition"));
+        client.assert(disposition.indexOf("attachment") === 0, disposition);
+        client.assert(disposition.indexOf("users-") > 0 && disposition.indexOf(".xlsx") > 0, disposition);
+    });
+    client.test("never cached", function () { client.assert(String(response.headers.valueOf("Cache-Control")).indexOf("no-store") >= 0); });
+%}
+
+### 17.2 XLSX with filters (200)
+GET {{host}}/api/reports/users?format=XLSX&role=MANAGER&active=true
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 17.3 A manager cannot export users as XLSX (403)
+GET {{host}}/api/reports/users?format=XLSX
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 17.4 XLSX export without token (401)
+GET {{host}}/api/reports/users?format=XLSX
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 17.5 CSV still works after the new format (200)
+GET {{host}}/api/reports/users?format=CSV
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("CSV content type", function () { client.assert(response.status === 200 && response.contentType.mimeType === "text/csv", "got " + response.status); }); %}
+
+# ---------------------------------------------------------------
+# 18. EXPORTS (8.3a: stock position = products, MANAGER or ADMIN)
+# Needs the products from section 4 (arroz, caneta for tenant A; arroz for tenant B).
+# ---------------------------------------------------------------
+
+### 18.1 Export stock position as CSV (200)
+GET {{host}}/api/reports/products
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("CSV content type", function () { client.assert(response.contentType.mimeType === "text/csv", "got " + response.contentType.mimeType); });
+    client.test("downloads as products-*.csv", function () {
+        var disposition = String(response.headers.valueOf("Content-Disposition"));
+        client.assert(disposition.indexOf("products-") > 0 && disposition.indexOf(".csv") > 0, disposition);
+    });
+    client.test("header row", function () { client.assert(response.body.indexOf("SKU;Name;Unit;Cost price;Sale price;Stock quantity;Minimum stock;Stock value;Low stock;Active") >= 0, "header not found"); });
+    client.test("has both tenant A products", function () {
+        client.assert(response.body.indexOf("arroz;") >= 0 && response.body.indexOf("caneta;") >= 0, "products missing");
+    });
+%}
+
+### 18.2 Filter by SKU (200)
+GET {{host}}/api/reports/products?sku=cane
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("only the pen", function () {
+        client.assert(response.body.indexOf("caneta;") >= 0 && response.body.indexOf("arroz;") < 0, "wrong rows");
+    });
+%}
+
+### 18.3 Filter low stock (200)
+GET {{host}}/api/reports/products?lowStock=true
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 18.4 Stock position as XLSX (200)
+GET {{host}}/api/reports/products?format=XLSX
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("XLSX content type", function () {
+        client.assert(response.contentType.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "got " + response.contentType.mimeType);
+    });
+%}
+
+### 18.5 A manager can export (200)
+GET {{host}}/api/reports/products
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 18.6 An operator cannot export (403)
+GET {{host}}/api/reports/products
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 18.7 Export without token (401)
+GET {{host}}/api/reports/products
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 18.8 Tenant B sees only its own products (200, isolation)
+GET {{host}}/api/reports/products
+Authorization: Bearer {{tokenB}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("no product from tenant A", function () {
+        client.assert(response.body.indexOf("arroz;") >= 0 && response.body.indexOf("caneta;") < 0, "isolation broken");
+    });
+%}
+
+# ---------------------------------------------------------------
+# 19. NOTIFICATIONS (9.1: in-app notifications, MANAGER or ADMIN)
+# The jobs that create notifications come in 9.2/9.3, so for now the rows are inserted by SQL.
+# Run this in psql BEFORE the section (docker exec -it kora-sync-db psql -U kora -d kora):
+#
+#   DELETE FROM notifications;
+#   INSERT INTO notifications (id, company_id, type, title, message, dedupe_key, created_at, updated_at)
+#   SELECT gen_random_uuid(), u.company_id, t.type, t.title, t.message, t.key,
+#          now() - t.age, now() - t.age
+#   FROM users u,
+#        (VALUES ('LOW_STOCK',      'Low stock: Arroz',       'Arroz is at 2.000 KG (minimum 5.000)', 'TEST:1', interval '3 minutes'),
+#                ('ENTRY_DUE_SOON', 'Entry due soon',         'Invoice #10 is due in 2 days',          'TEST:2', interval '2 minutes'),
+#                ('ENTRY_OVERDUE',  'Entry overdue',          'Invoice #7 is overdue',                 'TEST:3', interval '1 minute')
+#        ) AS t(type, title, message, key, age)
+#   WHERE u.email = 'admin@tenanta.com';
+#   INSERT INTO notifications (id, company_id, type, title, message, dedupe_key, created_at, updated_at)
+#   SELECT gen_random_uuid(), u.company_id, 'LOW_STOCK', 'Low stock: Arroz B', 'Tenant B only', 'TEST:B1', now(), now()
+#   FROM users u WHERE u.email = (SELECT email FROM users WHERE company_id <> (SELECT company_id FROM users WHERE email = 'admin@tenanta.com') LIMIT 1);
+# ---------------------------------------------------------------
+
+### 19.1 List notifications, newest first (200)
+GET {{host}}/api/notifications
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("3 notifications from tenant A", function () { client.assert(response.body.page.totalElements === 3, "got " + response.body.page.totalElements); });
+    client.test("newest first", function () { client.assert(response.body.data[0].title === "Entry overdue", "got " + response.body.data[0].title); });
+    client.test("all unread", function () { client.assert(response.body.data.every(function (n) { return n.read === false && n.readAt == null; })); });
+    client.global.set("notifA1", response.body.data[0].id);
+    client.global.set("notifA2", response.body.data[1].id);
+%}
+
+### 19.2 Unread counter (200)
+GET {{host}}/api/notifications/unread-count
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("3 unread", function () { client.assert(response.body.unread === 3, "got " + response.body.unread); });
+%}
+
+### 19.3 Mark one as read (200)
+POST {{host}}/api/notifications/{{notifA1}}/read
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("now read", function () { client.assert(response.body.read === true && response.body.readAt != null); });
+    client.global.set("notifA1ReadAt", response.body.readAt);
+%}
+
+### 19.4 Marking again changes nothing (200, idempotent)
+POST {{host}}/api/notifications/{{notifA1}}/read
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("same readAt", function () { client.assert(response.body.readAt === client.global.get("notifA1ReadAt"), "readAt changed"); });
+%}
+
+### 19.5 Unread counter dropped (200)
+GET {{host}}/api/notifications/unread-count
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("2 unread", function () { client.assert(response.status === 200 && response.body.unread === 2, "got " + response.body.unread); }); %}
+
+### 19.6 Only unread (200)
+GET {{host}}/api/notifications?unread=true
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("2 unread listed", function () { client.assert(response.body.page.totalElements === 2, "got " + response.body.page.totalElements); });
+%}
+
+### 19.7 Pagination (200)
+GET {{host}}/api/notifications?size=1&page=2
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("third page has one item", function () { client.assert(response.body.data.length === 1 && response.body.page.totalPages === 3, "got " + JSON.stringify(response.body.page)); });
+%}
+
+### 19.8 Tenant B sees only its own (200, isolation)
+GET {{host}}/api/notifications
+Authorization: Bearer {{tokenB}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("1 notification", function () { client.assert(response.body.page.totalElements === 1, "got " + response.body.page.totalElements); });
+%}
+
+### 19.9 Tenant B cannot mark a tenant A notification (404)
+POST {{host}}/api/notifications/{{notifA2}}/read
+Authorization: Bearer {{tokenB}}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 19.10 Unknown notification (404)
+POST {{host}}/api/notifications/00000000-0000-0000-0000-000000000000/read
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("404 Not Found", function () { client.assert(response.status === 404, "got " + response.status); }); %}
+
+### 19.11 A manager can read notifications (200)
+GET {{host}}/api/notifications
+Authorization: Bearer {{managerToken}}
+
+> {% client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); }); %}
+
+### 19.12 An operator cannot (403)
+GET {{host}}/api/notifications
+Authorization: Bearer {{operatorToken}}
+
+> {% client.test("403 Forbidden", function () { client.assert(response.status === 403, "got " + response.status); }); %}
+
+### 19.13 Without token (401)
+GET {{host}}/api/notifications
+
+> {% client.test("401 Unauthorized", function () { client.assert(response.status === 401, "got " + response.status); }); %}
+
+### 19.14 Mark all as read (200)
+POST {{host}}/api/notifications/read-all
+Authorization: Bearer {{tokenA}}
+
+> {%
+    client.test("200 OK", function () { client.assert(response.status === 200, "got " + response.status); });
+    client.test("2 updated", function () { client.assert(response.body.updated === 2, "got " + response.body.updated); });
+%}
+
+### 19.15 Nothing left unread (200)
+GET {{host}}/api/notifications/unread-count
+Authorization: Bearer {{tokenA}}
+
+> {% client.test("0 unread", function () { client.assert(response.status === 200 && response.body.unread === 0, "got " + response.body.unread); }); %}
+
+### 19.16 Tenant B was not touched by tenant A's read-all (200)
+GET {{host}}/api/notifications/unread-count
+Authorization: Bearer {{tokenB}}
+
+> {% client.test("1 unread", function () { client.assert(response.status === 200 && response.body.unread === 1, "got " + response.body.unread); }); %}
